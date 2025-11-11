@@ -17,7 +17,7 @@ OBJS := main runner
 BINS := $(addprefix $(BINDIR)/, $(OBJS))
 
 head: $(BINS) module1 #module2 | $(BUILD)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $(BUILD)/$(TARGET) $(wildcard $(BINDIR)/*) $(LIBS) $(MODULE1_DIR)/*.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $(BUILD)/$(TARGET) $(wildcard $(BINDIR)/*) $(MODULE1_DIR)/*.o $(LIBS)
 	
 debug: CXXFLAGS += -DDEBUG -O0
 debug: CCFLAGS += -DDEBUG
