@@ -10,13 +10,14 @@
 #include "global.h"
 #include "bed.h"
 #include "struct.h"
+#include "functions.h"
 #include "threadpool.h"
 
 #include <runner.hpp>
 #include <main.hpp>
 
 std::string version = "0.0.1";
-std::string toolName = "mytool";
+std::string toolName = "bam3D";
 
 std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now(); // immediately start the clock when the program is run
 
@@ -24,7 +25,7 @@ int verbose_flag;
 int maxThreads = 0;
 int cmd_flag;
 int tabular_flag;
-ToolUserInput userInput;
+UserInputBam3D userInput;
 
 std::mutex mtx;
 ThreadPool<std::function<bool()>> threadPool;
@@ -70,7 +71,7 @@ int main(int argc, char **argv) {
     
     std::string cmd;
     
-    //bool isPipe = false; // to check if input is from pipe
+    bool isPipe = false; // to check if input is from pipe
     
     if (argc == 1) { // tool name with no arguments
         printf("%s [command]\n-h for additional help.\n", toolName.c_str());
@@ -78,6 +79,8 @@ int main(int argc, char **argv) {
     }
     
     static struct option long_options[] = { // struct mapping long options
+		{"input-bam", required_argument, 0, 'b'},
+		
         {"cmd", no_argument, &cmd_flag, 1},
         {"version", no_argument, 0, 'v'},
         {"help", no_argument, 0, 'h'},
@@ -91,7 +94,7 @@ int main(int argc, char **argv) {
 //    };
     
     const static std::unordered_map<std::string,int> modes{
-        {"mode1",1},
+        {"parseBam",1},
         {"mode2",2}
     };
     
@@ -109,7 +112,7 @@ int main(int argc, char **argv) {
                 
                 int option_index = 0;
                 
-                c = getopt_long(argc, argv, "-:vh",
+                c = getopt_long(argc, argv, "-:b:vh",
                                 long_options, &option_index);
                 
                 if (c == -1) { // exit the loop if run out of options
@@ -119,7 +122,7 @@ int main(int argc, char **argv) {
                 switch (c) {
                     case ':': // handle options without arguments
                         switch (optopt) { // the command line option last matched
-                            case 'b':
+                            case 'f':
                                 break;
                                 
                             default:
@@ -144,6 +147,17 @@ int main(int argc, char **argv) {
                         //                if (strcmp(long_options[option_index].name,"line-length") == 0)
                         //                  splitLength = atoi(optarg);
                         break;
+					case 'b': // read input bam files
+						if (isPipe && userInput.pipeType == 'n') { // check whether input is from pipe and that pipe input was not already set
+							userInput.pipeType = 'r'; // pipe input is a sequence
+						}else{ // input is a regular file
+							optind--;
+							for( ;optind < argc && *argv[optind] != '-' && !isInt(argv[optind]); optind++){
+								ifFileExists(argv[optind]);
+								userInput.inFiles.push_back(argv[optind]);
+							}
+						}
+						break;
                     case '?': // unrecognized option
                         if (optopt != 0)
                             fprintf(stderr, "Unrecognized option: %c\n", optopt);
@@ -154,6 +168,7 @@ int main(int argc, char **argv) {
                     case 'v': // software version
                         printf("%s v%s\n", toolName.c_str(), version.c_str());
                         printf("Giulio Formenti giulio.formenti@gmail.com\n");
+						printf("Margherita Tremolada margheritatremolada@gmail.com\n");
                         exit(0);
                     case 'h': // help
 						printHelp();
@@ -185,7 +200,4 @@ int main(int argc, char **argv) {
     runner.run(); // run algorithms
     threadPool.join(); // join threads
     exit(EXIT_SUCCESS);
-    
-    exit(EXIT_SUCCESS);
-    
 }

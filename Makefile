@@ -5,12 +5,12 @@ WARNINGS = -Wall -Wextra
 
 CXXFLAGS = -g -std=gnu++14 -O3 $(INCLUDE_DIR) $(WARNINGS)
 
-TARGET = mytool #name of tool
+TARGET = bam3D #name of tool
 BUILD = build/bin
 SOURCE = src
 INCLUDE = include
 BINDIR := $(BUILD)/.o
-LIBS = -lz
+LIBS = -lz -lhts
 LDFLAGS = -pthread
 
 OBJS := main runner

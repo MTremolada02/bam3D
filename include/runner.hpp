@@ -1,17 +1,17 @@
 #ifndef runner_hpp
 #define runner_hpp
 
-struct ToolUserInput : UserInput { // additional input
-
+struct UserInputBam3D : UserInput { // additional input
+	uint8_t decompression_threads = 4;
 };
 
 class Runner {
     
-    ToolUserInput userInput;
+    UserInputBam3D userInput;
         
 public:
     
-    void loadInput(ToolUserInput userInput);
+    void loadInput(UserInputBam3D userInput);
     void run();
     
 };
