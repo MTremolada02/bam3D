@@ -4,12 +4,13 @@
 #include <htslib/sam.h>
 
 struct UserInputBam3D : UserInput { // additional input
-	uint8_t decompression_threads = 4;
-};
+	bool hist_none        =false;
+	bool hist_global      = false;
+	bool hist_by_chrom    = false;
 
-struct GraphStats{
-	std::vector<long double> edge; //Histo
-    std::vector<uint64_t> counts; //Histo
+	uint8_t decompression_threads = 4;
+	uint8_t histogram_mode = hist_none; // histogram mode
+
 };
 
 struct ReadStats {
@@ -48,7 +49,6 @@ class Runner {
     UserInputBam3D userInput;
 	ReadStats readStats;
 	PairStats pairStats;
-	GraphStats graphStats;
     
 public:
     
@@ -60,9 +60,9 @@ public:
 	void qname_group(bam1_t*,std::string&,std::vector<bam1_t*> &);
 	void qname_stats(std::string&,std::vector<bam1_t*> &);
 	void flag_inspector(bam1_t*);
-	void histo_Pdistance();
-	void update_histodata(bam1_t*); 
-	void processHeader(bam_hdr_t*); 
+	void histo_Pdistance(const std::unordered_map<uint64_t,uint64_t>&);
+	//void update_histodata(bam1_t*); 
+	//void processHeader(bam_hdr_t*); 
 	void processReads(samFile* , bam_hdr_t* , bam1_t*);
 	void output();
 	void run();
@@ -76,8 +76,9 @@ public:
 DOMANDE:
 -problema numero 1: se il mate di una coppia per un errore non è stato segnato la coppia è invalida ma non sapremo mai quale (forse con grandi numeri è inutile) 
 -ma il pos e il pos del mate non hanno di mezzo la sequenza del frammento stesso? non dovrebbe essere pos dell'ultima base mappata del primo frammento e inizio del mate?
+-
 
-DOMANDE A YING:
+DOMANDE Y:
 -le mapped/e non sono delle primary o in generale di tutte? //risposto samtools
 -mean insert è tra le coppie buone o tutti record in generale?
 -i duplicati sono dei singoli read non delle paia, o l'averli calcolati con pairtools cambia la loro situa?

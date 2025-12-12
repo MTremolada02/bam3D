@@ -8,6 +8,7 @@
 #include <stack>
 #include <iostream>
 #include <fstream>
+#include <unordered_map>
 #include <algorithm>
 
 #include <htslib/sam.h>
@@ -59,20 +60,34 @@ double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
 	return (total_base==0) ? 0.0 : (long double)mismatched_bases/total_base;
 }
 
-void Runner::histo_Pdistance (){
-	std::fstream myfile;
-	myfile.open("Pair_by_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
+void Runner::histo_Pdistance (const std::unordered_map<uint64_t,uint64_t>& dist_count){
+	if(userInput.hist_global){ 
+		std::fstream myfile;
+		myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
 
-	if(!myfile.is_open()){
-		std::cout<<"pair_by_distance not open"<<std::endl;
-		return;
+		if(!myfile.is_open()){
+			std::cout<<"pair_by_global_distance not open"<<std::endl;
+			return;
+		}
+		myfile << "distance" << "\t" << "count" << "\n";
+		for (auto i = dist_count.begin(); i != dist_count.end(); ++i) {
+			myfile << i->first << "\t" << i->second<< "\n";
+		}
+	
+		myfile.close();  
+	} else {
+		std::fstream myfile;
+		myfile.open("Pair_by_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
+
+		if(!myfile.is_open()){
+			std::cout<<"pair_by_distance not open"<<std::endl;
+			return;
+		}
+
+
+		myfile.close();  
+
 	}
-
-	for(long double i=0.0L; i<graphStats.edge.size()-1; ++i) {
-		myfile<<(sqrt(graphStats.edge[i]*graphStats.edge[i+1]))<<"\t"<<graphStats.counts[i]<<std::endl;
-	}
-
-	myfile.close();  
 }
 
 void Runner::flag_inspector (bam1_t* bamdata) {
@@ -120,37 +135,6 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 	} 
 }
 	
-void Runner::processHeader(bam_hdr_t *bamHdr) {
-	long double l_max=0;
-	long double l_min=1.0; //QUANTE??
-	int n_bins=0;
-	int bins_per_decade = 20;
-	double step=1.0/bins_per_decade; // sempre supponendo 20 bin per decade
-	
-	for(int i=0; i<bamHdr->n_targets; ++i) {
-		l_max=std::max<long double>(l_max,bamHdr->target_len[i]);
-	}
-
-    n_bins=(int)bins_per_decade*(log10(l_max)-log10(l_min)); //se è vero che ci sono 20 bin per decade:(10^) ->lo step in scala logaritmica è 1/20=0.05
-	graphStats.edge.assign(n_bins + 1, 0.0L);
-    graphStats.counts.assign(n_bins, 0L);
-
-	for(int i=0; i<=n_bins; ++i){
-		graphStats.edge[i] = pow(10.0L, log10(l_min) + i * step); //edge[i]=l_min​⋅10^(i⋅Δ) ogni 20 bins si ha fatto una decade
-	}
-}
-
-void Runner::update_histodata(bam1_t* bamdata){
-    long long sep = std::llabs((long long)bamdata->core.pos - (long long)bamdata->core.mpos);
-
-    // fuori range? salta
-    if (sep < graphStats.edge.front() || sep > graphStats.edge.back()) return;
-
-    // trova il bin
-    int bin = std::upper_bound(graphStats.edge.begin(), graphStats.edge.end(), (long double)sep)- graphStats.edge.begin() - 1; // upper_bound mi ritorna il bordo dell'edge subito più grande del mio valore di sep es115 edge{100,110,150...}, upper_bound mi ritorna 150, upperbound[]-begin[0]= indice della casella dell'edge max:[3] ma [2-3) corrisponde al bin 2 quindi il -1
-
-    if (bin >= 0 && bin < (int)graphStats.counts.size()) {graphStats.counts[bin]++;} //controllo più aumento del count del bin corrisponente (così "esistono i bin")
-}
 
 void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) { 
 	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
@@ -163,13 +147,15 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 	uint64_t mismatched_bases=0;
 	uint64_t total_base=0;
 
-	processHeader(bamHdr);
+	std::unordered_map <uint64_t,uint64_t> dist_count; //per ora la tengo così
+	uint64_t dist=0;
+	//processHeader(bamHdr);
 	
 	while(sam_read1(fp_in, bamHdr, bamdata)>0) {
 		pairStats.good_read1=false;
 		pairStats.good_read2=false;
 		++readStats.readN;
-		
+////FLAG STATS;		
 		if (bamdata->core.qual==0) {++readStats.mapQ0;}
 		flag_inspector(bamdata);
 
@@ -179,7 +165,7 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 
 			readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, bamdata);    //agigungere controllo sull'orientamento delle letture di r1 e r2!
 			readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
-			update_histodata(bamdata);
+			//update_histodata(bamdata);
 		}
 
 		if (pairStats.good_read1 || pairStats.good_read2) { 
@@ -190,31 +176,42 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
     		uint64_t aligned = bam_cigar2rlen(bamdata->core.n_cigar, bam_get_cigar(bamdata)); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
     		total_base += aligned;
 		} 
-
+///STORAGE OR PROCESSING PER QNAME SORTED;
 		if(qname_sorted){
  			if (first) {  // primo record
             	qname = bam_get_qname(bamdata);
             	group.push_back(bam_dup1(bamdata));
-            	first = false;
         	} else {
             qname_group(bamdata, qname, group);
         	}
 		}
+////HISTOGRAM DATA
+		if(userInput.hist_global){ 
+			dist=llabs(bamdata->core.pos - bamdata->core.mpos); // dovrebbero essere degli uint&_t quindi non serve forzare il double ne arrotondare
+			++dist_count[dist]; 
+			//break;
+		}
+		if(userInput.hist_by_chrom){
+			//si vedrà
+		}
+			
 
+		first = false;
 	}
 
 	if (qname_sorted && !group.empty()) {
-    	qname_stats(qname,group);
-    	for (bam1_t *rec : group) bam_destroy1(rec);
+    		qname_stats(qname,group);
+    		for (bam1_t *rec : group) bam_destroy1(rec);
     		group.clear();
 	}
 
+	histo_Pdistance(dist_count);
 
 	pairStats.pairN=pairStats.pairN/2; //conto pairN solo con i read1? if(stats.pair1==stats.pair2) {lo divido} else {errore qualcosa non va nel file :/} //controllo sulle paia?
 	readStats.error_rate=error_rate(mismatched_bases,total_base);
 }
 
-void Runner::output(){ //si può scrivere meglio con una funzione di perfentu
+void Runner::output(){ 
 	std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
 	std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
 	std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
@@ -258,7 +255,6 @@ void Runner::run() {
 
 		processReads(fp_in,bamHdr, bamdata);
 		output();
-		histo_Pdistance();
 
 		bam_hdr_destroy(bamHdr);
 		bam_destroy1(bamdata);
@@ -270,6 +266,37 @@ void Runner::run() {
 
 
 
+/*void Runner::processHeader(bam_hdr_t *bamHdr) {
+	long double l_max=0;
+	long double l_min=1.0; //QUANTE??
+	int n_bins=0;
+	int bins_per_decade = 20;
+	double step=1.0/bins_per_decade; // sempre supponendo 20 bin per decade
+	
+	for(int i=0; i<bamHdr->n_targets; ++i) {
+		l_max=std::max<long double>(l_max,bamHdr->target_len[i]);
+	}
+
+    n_bins=(int)bins_per_decade*(log10(l_max)-log10(l_min)); //se è vero che ci sono 20 bin per decade:(10^) ->lo step in scala logaritmica è 1/20=0.05
+	graphStats.edge.assign(n_bins + 1, 0.0L);
+    graphStats.counts.assign(n_bins, 0L);
+
+	for(int i=0; i<=n_bins; ++i){
+		graphStats.edge[i] = pow(10.0L, log10(l_min) + i * step); //edge[i]=l_min​⋅10^(i⋅Δ) ogni 20 bins si ha fatto una decade
+	}
+}*/
+
+/*void Runner::update_histodata(bam1_t* bamdata){
+    long long sep = std::llabs((long long)bamdata->core.pos - (long long)bamdata->core.mpos);
+
+    // fuori range? salta
+    if (sep < graphStats.edge.front() || sep > graphStats.edge.back()) return;
+
+    // trova il bin
+    int bin = std::upper_bound(graphStats.edge.begin(), graphStats.edge.end(), (long double)sep)- graphStats.edge.begin() - 1; // upper_bound mi ritorna il bordo dell'edge subito più grande del mio valore di sep es115 edge{100,110,150...}, upper_bound mi ritorna 150, upperbound[]-begin[0]= indice della casella dell'edge max:[3] ma [2-3) corrisponde al bin 2 quindi il -1
+
+    if (bin >= 0 && bin < (int)graphStats.counts.size()) {graphStats.counts[bin]++;} //controllo più aumento del count del bin corrisponente (così "esistono i bin")
+}*/
 
 /*
 	corpo del process read

@@ -84,6 +84,8 @@ int main(int argc, char **argv) {
         {"cmd", no_argument, &cmd_flag, 1},
         {"version", no_argument, 0, 'v'},
         {"help", no_argument, 0, 'h'},
+        {"hist-global", no_argument, 0, 'g'},
+        {"hist-chrom", no_argument, 0, 'm'},
         
         {0, 0, 0, 0}
     };
@@ -112,7 +114,7 @@ int main(int argc, char **argv) {
                 
                 int option_index = 0;
                 
-                c = getopt_long(argc, argv, "-:b:vh",
+                c = getopt_long(argc, argv, "-:b:vhgm",
                                 long_options, &option_index);
                 
                 if (c == -1) { // exit the loop if run out of options
@@ -158,6 +160,12 @@ int main(int argc, char **argv) {
 							}
 						}
 						break;
+                    case 'g': //histogram options
+                    case 'm':
+                        if(c=='g'){userInput.hist_global=true;}
+                        if(c=='m'){userInput.hist_by_chrom=true;}
+                        break;
+
                     case '?': // unrecognized option
                         if (optopt != 0)
                             fprintf(stderr, "Unrecognized option: %c\n", optopt);
