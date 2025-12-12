@@ -2,6 +2,7 @@
 #define runner_hpp
 
 #include <htslib/sam.h>
+#include <map>
 
 struct UserInputBam3D : UserInput { // additional input
 	bool hist_none        =false;
@@ -60,9 +61,8 @@ public:
 	void qname_group(bam1_t*,std::string&,std::vector<bam1_t*> &);
 	void qname_stats(std::string&,std::vector<bam1_t*> &);
 	void flag_inspector(bam1_t*);
-	void histo_Pdistance(const std::unordered_map<uint64_t,uint64_t>&);
-	//void update_histodata(bam1_t*); 
-	//void processHeader(bam_hdr_t*); 
+	void histo_global_distance(std::unordered_map<uint64_t,uint64_t>&);
+	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
 	void processReads(samFile* , bam_hdr_t* , bam1_t*);
 	void output();
 	void run();

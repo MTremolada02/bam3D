@@ -9,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
+#include <map>
 #include <algorithm>
 
 #include <htslib/sam.h>
@@ -60,35 +61,51 @@ double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
 	return (total_base==0) ? 0.0 : (long double)mismatched_bases/total_base;
 }
 
-void Runner::histo_Pdistance (const std::unordered_map<uint64_t,uint64_t>& dist_count){
-	if(userInput.hist_global){ 
-		std::fstream myfile;
-		myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
+void Runner::histo_global_distance (std::unordered_map<uint64_t,uint64_t>& global_dist_count){
 
-		if(!myfile.is_open()){
-			std::cout<<"pair_by_global_distance not open"<<std::endl;
-			return;
-		}
-		myfile << "distance" << "\t" << "count" << "\n";
-		for (auto i = dist_count.begin(); i != dist_count.end(); ++i) {
-			myfile << i->first << "\t" << i->second<< "\n";
-		}
-	
-		myfile.close();  
-	} else {
-		std::fstream myfile;
-		myfile.open("Pair_by_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
+	std::fstream myfile;
+	myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
 
-		if(!myfile.is_open()){
-			std::cout<<"pair_by_distance not open"<<std::endl;
-			return;
-		}
-
-
-		myfile.close();  
-
+	if(!myfile.is_open()){
+		std::cout<<"pair_by_global_distance not open"<<std::endl;
+		return;
 	}
+	myfile << "distance" << "\t" << "count" << "\n";
+	for (auto i = global_dist_count.begin(); i != global_dist_count.end(); ++i) {
+		myfile << i->first << "\t" << i->second<< "\n";
+	}
+	myfile.close();  
 }
+
+void Runner::histo_chrom_distance (std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>& chrom_dist_count) { 
+	std::fstream myfile;
+	myfile.open("Pair_chromosome_by_distance.txt",std::ios::out); //aggiungere il path (i vecchi dati vengono cancellati e sovrascritti)
+
+	if(!myfile.is_open()){
+		std::cout<<"pair_chromosome_by_distance not open"<<std::endl;
+		return;
+	}
+	
+	myfile << "# distance\tcount\n";
+
+	for (auto i = chrom_dist_count.begin(); i != chrom_dist_count.end(); ++i) {
+
+    	uint32_t chrom = i->first;
+    	const auto& dist_map = i->second;
+
+    	// intestazione cromosoma
+    	myfile << "\n# chromosome\t" << i->first<< "\n";
+
+    	// ciclo sulle distanze di quel cromosoma
+    	for (auto j = dist_map.begin(); j != dist_map.end(); ++j) {
+       	 myfile << j->first << "\t" << j->second << "\n";
+    	}
+	}
+	myfile.close();  
+
+}
+
+
 
 void Runner::flag_inspector (bam1_t* bamdata) {
 	uint16_t flag= bamdata-> core.flag;
@@ -140,14 +157,16 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
 	std::vector<bam1_t*> group;
 	std::string qname;
-	bool first = true;
+	bool first = true; //fist reading
 
 	uint64_t av_counter=0;
 	
 	uint64_t mismatched_bases=0;
 	uint64_t total_base=0;
 
-	std::unordered_map <uint64_t,uint64_t> dist_count; //per ora la tengo così
+	std::unordered_map <uint64_t,uint64_t> global_dist_count; //per ora la tengo così
+	std::map <uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
+	uint32_t chrom=0;
 	uint64_t dist=0;
 	//processHeader(bamHdr);
 	
@@ -155,7 +174,7 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 		pairStats.good_read1=false;
 		pairStats.good_read2=false;
 		++readStats.readN;
-////FLAG STATS;		
+		////FLAG STATS;		
 		if (bamdata->core.qual==0) {++readStats.mapQ0;}
 		flag_inspector(bamdata);
 
@@ -163,9 +182,19 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 			++av_counter;
 			++pairStats.sameCr;
 
-			readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, bamdata);    //agigungere controllo sull'orientamento delle letture di r1 e r2!
+			readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, bamdata);    //aggiungere controllo sull'orientamento delle letture di r1 e r2!
 			readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
-			//update_histodata(bamdata);
+			
+			if(userInput.hist_global){ //HISTO_GLOBAL_DATA
+				dist=llabs(bamdata->core.pos - bamdata->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
+				++global_dist_count[dist]; 
+			}
+			
+			if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
+				chrom=bamdata->core.tid;
+				dist=llabs(bamdata->core.pos - bamdata->core.mpos);
+				chrom_dist_count[chrom][dist]++;
+			}
 		}
 
 		if (pairStats.good_read1 || pairStats.good_read2) { 
@@ -176,37 +205,28 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
     		uint64_t aligned = bam_cigar2rlen(bamdata->core.n_cigar, bam_get_cigar(bamdata)); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
     		total_base += aligned;
 		} 
-///STORAGE OR PROCESSING PER QNAME SORTED;
+		///STORAGE OR PROCESSING PER QNAME SORTED;
 		if(qname_sorted){
  			if (first) {  // primo record
             	qname = bam_get_qname(bamdata);
             	group.push_back(bam_dup1(bamdata));
         	} else {
             qname_group(bamdata, qname, group);
-        	}
-		}
-////HISTOGRAM DATA
-		if(userInput.hist_global){ 
-			dist=llabs(bamdata->core.pos - bamdata->core.mpos); // dovrebbero essere degli uint&_t quindi non serve forzare il double ne arrotondare
-			++dist_count[dist]; 
-			//break;
-		}
-		if(userInput.hist_by_chrom){
-			//si vedrà
+    		}
 		}
 			
-
 		first = false;
 	}
 
 	if (qname_sorted && !group.empty()) {
-    		qname_stats(qname,group);
-    		for (bam1_t *rec : group) bam_destroy1(rec);
-    		group.clear();
+    	qname_stats(qname,group);
+    	for (bam1_t *rec : group) bam_destroy1(rec);
+    	group.clear();
 	}
 
-	histo_Pdistance(dist_count);
-
+	if(userInput.hist_global){histo_global_distance(global_dist_count);}
+	if (userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	pairStats.pairN=pairStats.pairN/2; //conto pairN solo con i read1? if(stats.pair1==stats.pair2) {lo divido} else {errore qualcosa non va nel file :/} //controllo sulle paia?
 	readStats.error_rate=error_rate(mismatched_bases,total_base);
 }
