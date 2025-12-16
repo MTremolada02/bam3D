@@ -44,15 +44,30 @@ void Runner::qname_group(bam1_t *bamdata,std::string &qname,std::vector<bam1_t*>
 }
 
 void Runner::qname_stats(std::vector<bam1_t*> &group){
+
+	uint8_t r1 = 0, r2 = 0;
+
 	uint8_t mapped_count1=0;
 	uint8_t mapped_count2=0;
-	Maptype a=qnameStats.type1;
-	Maptype b=qnameStats.type2;
+	Maptype a=qnameStats.type1=Maptype::N;
+	Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
 
+	for(bam1_t* rec:group){
+		if (rec->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
+    	if (rec->core.flag & BAM_FUNMAP) continue;
+
+    	if (rec->core.flag & BAM_FREAD1) ++r1;
+    	if (rec->core.flag & BAM_FREAD2) ++r2;
+	}
+
+	if (r1>=2 || r2>=2) {
+		++qnameStats.WW; //da controllare eventuali rescued
+		return;    
+	}
 
 	for(bam1_t* rec:group){
 		if(rec->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari 
-		if((!rec->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
+		if(!(rec->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
 		if(rec->core.flag & BAM_FREAD1) {
 			if(rec->core.flag & BAM_FSECONDARY && !(rec->core.flag & BAM_FUNMAP)) {mapped_count1++;}
 			if(!(rec->core.flag & BAM_FSECONDARY) && !(rec->core.flag & BAM_FUNMAP)) {mapped_count1++;} //dovrebbe essere il primary
@@ -176,7 +191,6 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 			if(!(flag & BAM_FUNMAP) && !(flag & BAM_FMUNMAP)) {
 				pairStats.good_read2=true;
 			}
-
 		}	
 	} 
 }
@@ -279,7 +293,7 @@ void Runner::output(){
 	std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
 	std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
 	std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
-	std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
+	std::cout<<"WW"<<":"<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.WW<<":"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 }
 
 void Runner::run() {
