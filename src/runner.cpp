@@ -74,7 +74,7 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
 	uint8_t mapped_count2=0;
 	Maptype a=qnameStats.type1=Maptype::N;
 	Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
-//////walked e rescued
+//////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
 	for(bam1_t* rec:group){
 		if (rec->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
     	if (rec->core.flag & BAM_FUNMAP) continue;
@@ -83,17 +83,22 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
     	if (rec->core.flag & BAM_FREAD2) r2_side.push_back(rec);
 	}
 
-	if((r1_side.size()>=2 && r2_side.size()==1) || (r2_side.size()>=2 && r1_side.size()==1)){ 
-		if	(r1_side.size() == 2) {
-			chim = &r1_side;
-			other = &r2_side;
-			R1=true;
-		}else {
-			chim = &r2_side;
-			other = &r1_side;
-			R2=true;
+	if(r1_side.size()>2 || r2_side.size()>2){ 
+		if((r1_side.size()>=2 && r2_side.size()==1) || (r2_side.size()>=2 && r1_side.size()==1)){ 
+			if	(r1_side.size() == 2) {
+				chim = &r1_side;
+				other = &r2_side;
+				R1=true;
+			}else if (r2_side.size() == 2){
+				chim = &r2_side;
+				other = &r1_side;
+				R2=true;
+			}
+		} else {
+		++qnameStats.WW;
+		return;
 		}
-
+	
 		if (Alignstarts((*chim)[0]) > Alignstarts((*chim)[1])) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
 			std::swap((*chim)[0], (*chim)[1]);///////non tanto chiaro
 		}//ora chim[0] è l'outer, [1]è l'inner e l'altro è automaticamente l'other
@@ -112,23 +117,23 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
 			return;  
 		}
 	}
-	else if (r1_side.size()+r2_side.size()>3) {//Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
-		++qnameStats.WW; 
-		return;    
-	}
-	//svuotarlo perchè non erano walk ne cadidati ai walk
+	
 //////pair stats
 	for(bam1_t* rec:group){
-		if(rec->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari 
+		if(rec->core.flag & BAM_FUNMAP) {continue;}
+		if(rec->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
 		if(!(rec->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
-		if(rec->core.flag & BAM_FREAD1) {
-			if(rec->core.flag & BAM_FSECONDARY && !(rec->core.flag & BAM_FUNMAP)) {mapped_count1++;}
-			if(!(rec->core.flag & BAM_FSECONDARY) && !(rec->core.flag & BAM_FUNMAP)) {mapped_count1++;} //dovrebbe essere il primary
+
+		if(!(rec->core.flag & BAM_FSECONDARY) && rec->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
+			++qnameStats.DD;
+			return;
 		}
-		if(rec->core.flag & BAM_FREAD2) {
-			if(rec->core.flag & BAM_FSECONDARY && !(rec->core.flag & BAM_FUNMAP)) {mapped_count2++;}
-			if(!(rec->core.flag & BAM_FSECONDARY) && !(rec->core.flag & BAM_FUNMAP)) {mapped_count2++;}
-		}
+		/*if(rec->core.flag & BAM_FREAD1) {
+			if(rec->core.flag & BAM_FSECONDARY) {mapped_count1++;}
+			else{mapped_count1++;} //dovrebbe essere il primary
+		}*/
+		if(rec->core.flag & BAM_FREAD1) {++mapped_count1;}
+		if(rec->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
 	}
 
 	a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
@@ -137,7 +142,10 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
 	if(rescued && R1) {a=Maptype::R;}
 	if(rescued && R2) {b=Maptype::R;}
 
-	if(a==Maptype::U && b==Maptype::R) ++qnameStats.UR; //unico di cui importa l'ordine
+	if(a==Maptype::U && b==Maptype::R) {
+		++qnameStats.UR;
+		return;
+	} //unico di cui importa l'ordine
 
 	if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
 
@@ -351,7 +359,7 @@ void Runner::output(){
 	std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
 	std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
 	std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
-	std::cout<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
+	std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
 }
 
 void Runner::run() {
