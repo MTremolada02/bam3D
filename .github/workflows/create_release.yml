@@ -69,8 +69,8 @@ jobs:
         run: |
           sudo apt-get install libhts-dev
           make all -j
-          apptainer build --fix-perms --ignore-fakeroot-command rdeval_static.sif .github/workflows/apptainer.def
-          apptainer exec --bind $(pwd):/out rdeval_static.sif cp /rdeval/build/bin/rdeval /out/rdeval_static_binary
+          apptainer build --fix-perms --ignore-fakeroot-command bam3D_static.sif .github/workflows/apptainer.def
+          apptainer exec --bind $(pwd):/out bam3D_static.sif cp /bam3D/build/bin/bam3D /out/bam3D_static_binary
       - name: Zip-dynamic
         uses: papeloto/action-zip@v1
         with:
@@ -80,7 +80,7 @@ jobs:
         name: Zip-static
         uses: papeloto/action-zip@v1
         with:
-          files: rdeval_static_binary
+          files: bam3D_static_binary
           dest: static.zip
       - name: Add binaries
         uses: actions/upload-release-asset@v1
