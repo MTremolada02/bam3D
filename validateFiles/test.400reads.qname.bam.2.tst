@@ -1,4 +1,4 @@
-parseBam -b testFiles/test.400reads.qname.bam 
+parseBam -b testFiles/test.400reads.qname.bam -m
 embedded
 Qc_fail:0
 Tot_record:400

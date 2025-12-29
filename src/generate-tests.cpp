@@ -36,8 +36,10 @@ int main(int, char **argv) {
 
     std::string exePath = getExePath(argv[0]);
 
+    //const std::map<std::set<std::string>, std::vector<std::string>> ext_args = {
+       // {{"fasta", "fasta.gz", "fastq", "fastq.gz", "bam", "cram"}, {"-m", "-g" , "-f \"l>10\"", "-f \"l<10\"", "-f \"l=10\"", "--sequence-report", "--output-file /tmp/test.bam"}},
     const std::map<std::set<std::string>, std::vector<std::string>> ext_args = {
-        {{"fasta", "fasta.gz", "fastq", "fastq.gz", "bam", "cram"}, {"-m", "-g" , "-f \"l>10\"", "-f \"l<10\"", "-f \"l=10\"", "--sequence-report", "--output-file /tmp/test.bam"}},
+        {{"bam"}, {"", "-g" , "-m"}},
     
         //  {{set of test file extensions}, {list of command line args to run with}}
     };

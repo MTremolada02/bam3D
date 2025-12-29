@@ -27,8 +27,8 @@ debug: head
 
 all: head validate regenerate
 
-#$(OBJS): %: $(BINDIR)/%
-#	@
+$(OBJS): %: $(BINDIR)/%
+	@
 $(BINDIR)%: $(SOURCE)/%.cpp $(INCLUDE)/%.hpp | $(BINDIR)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -c $(SOURCE)/$(notdir $@).cpp -o $@
 	

@@ -79,12 +79,13 @@ void genTest(std::string exePath, const std::string &file, const std::string &ar
     std::cout << "generating: " << tstFile << std::endl;
     std::ofstream ostream;
     ostream.open(tstFile);
-    ostream << "testFiles/" << file << " " << args << "\nembedded" << std::endl;
+    ostream << "parseBam -b testFiles/" << file << " " << args << "\nembedded" << std::endl;
     ostream.close();
 #ifdef _WIN32
     std::string cmd = "\"\""+exePath+"\" testFiles/"+file+" "+args+" >> "+tstFile+"\"";
 #else
-    std::string cmd = "\""+exePath+"\" testFiles/"+file+" "+args+" >> "+tstFile;
+    
+std::string cmd ="\""+exePath+"\" parseBam -b testFiles/"+file+" "+args+" >> "+tstFile;
 #endif
     int exit = system(cmd.c_str());
     if (exit == EXIT_SUCCESS) {
