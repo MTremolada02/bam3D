@@ -3,7 +3,7 @@ GFALIBS_DIR := $(CURDIR)/gfalibs
 INCLUDE_DIR = -I./include -I$(GFALIBS_DIR)/include #-Imodule2/include
 WARNINGS = -Wall -Wextra
 
-CXXFLAGS = -g -std=gnu++14 -O3 $(INCLUDE_DIR) $(WARNINGS)
+CXXFLAGS = -g -std=gnu++14 -O3 $(INCLUDE_DIR) $(WARNINGS) $(CFLAGS)
 
 TARGET = bam3D #name of tool
 TEST_TARGET = validate
