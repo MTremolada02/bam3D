@@ -63,7 +63,7 @@ std::string getArgs(char* optarg, unsigned int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-    
+//std::cout<<"DAI"<<std::endl;    
     short int c; // optarg
     short unsigned int pos_op = 1; // optional arguments
     

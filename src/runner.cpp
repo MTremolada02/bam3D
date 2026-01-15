@@ -24,27 +24,49 @@ void Runner::loadInput(UserInputBam3D userInput) {
 }
 
 void Runner::qname_group(bam1_t *bamdata,std::string &qname,std::vector<bam1_t*> &group){
-
+//std::cout<<"qname_group"<<std::endl;
+if (!bamdata) return;//!!!!!!!!!
 	std::string current_qname=bam_get_qname(bamdata);
 
 	if(qname==current_qname){ //stesso qname
-		group.push_back(bam_dup1(bamdata)); //duplica il bam1_t puntato da bamdata e ne salva il puntatore nel vettore
-
-	} else {
-		qname_stats(group);
-			
-		for (bam1_t* rec : group) { //per ogni puntatore in group
-    		bam_destroy1(rec); // libera il bam1_t a cui il puntatore rec si riferisce
+		//group.push_back(bam_dup1(bamdata)); //duplica il bam1_t puntato da bamdata e ne salva il puntatore nel vettore
+		bam1_t* dup = bam_dup1(bamdata);
+        	if (dup != nullptr) {
+            	group.push_back(dup);
 		}
-	group.clear();
-
+	} else {
+	//	qname_stats(group);
+			
+	//	for (bam1_t* rec : group) { //per ogni puntatore in group
+    	//	bam_destroy1(rec); // libera il bam1_t a cui il puntatore rec si riferisce
+		
+		if (!group.empty()) {
+//if (group.size() > 1) {
+             //   qname_stats(group);
+           // }
+            		qname_stats(group);
+            		for (bam1_t* rec : group) {
+//std::cout<<"prima di eliminarlo"<<std::endl;
+                		if (rec != nullptr) {
+                    			bam_destroy1(rec);
+//std::cout<<"dopo averlo eliminato"<<std::endl;
+				}
+			}
+			group.clear();
+		}
 	qname=current_qname;
-	group.push_back(bam_dup1(bamdata)); 
+//	group.push_back(bam_dup1(bamdata));
+
+	bam1_t* dup = bam_dup1(bamdata);
+        if (dup != nullptr) {
+            group.push_back(dup);
+        } 
 	} 
 }
 
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
+//std::cout<<"Alignstats"<<std::endl;
 	const uint32_t* cigar = bam_get_cigar(b);
 	uint16_t bases=0;
 
@@ -59,6 +81,7 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 }
 
 void Runner::qname_stats(std::vector<bam1_t*> &group){
+//std::cout<<"qname_stats"<<std::endl;
 	std::vector <bam1_t*> r1_side, r2_side;
 	std::vector <bam1_t*> *chim = nullptr;
 	std::vector <bam1_t*> *other=nullptr;
@@ -83,29 +106,37 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
     	if (rec->core.flag & BAM_FREAD2) r2_side.push_back(rec);
 	}
 
-	if(r1_side.size()>2 || r2_side.size()>2){ 
-		if((r1_side.size()>=2 && r2_side.size()==1) || (r2_side.size()>=2 && r1_side.size()==1)){ 
-			if	(r1_side.size() == 2) {
+	if(r1_side.size()>=2 || r2_side.size()>=2){
+//std::cout<<"if(r1_side.size()>=2 || r2_side.size()>=2)"<<std::endl;
+		if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
+//std::cout<<"subito sotto"<<std::endl;		
+	if	(r1_side.size() == 2) {
+//std::cout<<"(r1_side.size() == 2)"<<std::endl;
 				chim = &r1_side;
 				other = &r2_side;
 				R1=true;
 			}else if (r2_side.size() == 2){
+//std::cout<<"(r2_side.size() == 2)"<<std::endl;
 				chim = &r2_side;
 				other = &r1_side;
 				R2=true;
 			}
 		} else {
+//std::cout<<"++qnameStats"<<std::endl;
 		++qnameStats.WW;
 		return;
 		}
-	
+//std::cout<<"prima dell'alignstats"<<std::endl;
+
 		if (Alignstarts((*chim)[0]) > Alignstarts((*chim)[1])) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
+//std::cout<<"dentro all'Alignstarts"<<std::endl;
 			std::swap((*chim)[0], (*chim)[1]);///////non tanto chiaro
 		}//ora chim[0] è l'outer, [1]è l'inner e l'altro è automaticamente l'other
-
+//std::cout<<"fuori da alignstarts"<<std::endl;
 		bool rev_i = (*chim)[1]->core.flag & BAM_FREVERSE;
 		bool rev_o = (*other)[0]->core.flag & BAM_FREVERSE;
 		//controlli 
+//std::cout<<"controlli sui rescue"<<std::endl;
 		if(((*chim)[1])->core.tid==((*other)[0])->core.tid) {cis=true;} 
 		if((!rev_i &&  rev_o && (*chim)[1]->core.pos <= (*other)[0]->core.pos) || ( rev_i && !rev_o && (*other)[0]->core.pos <= (*chim)[1]->core.pos)) {facing=true;}
 		if(llabs((*chim)[1]->core.pos - (*other)[0]->core.pos) <= 2000) {distance=true;}////di default 2000 pb
@@ -117,7 +148,7 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
 			return;  
 		}
 	}
-	
+//std::cout<<"prima di pairstats"<<std::endl;	
 //////pair stats
 	for(bam1_t* rec:group){
 		if(rec->core.flag & BAM_FUNMAP) {continue;}
@@ -128,10 +159,10 @@ void Runner::qname_stats(std::vector<bam1_t*> &group){
 			++qnameStats.DD;
 			return;
 		}
-		/*if(rec->core.flag & BAM_FREAD1) {
+		if(rec->core.flag & BAM_FREAD1) {
 			if(rec->core.flag & BAM_FSECONDARY) {mapped_count1++;}
 			else{mapped_count1++;} //dovrebbe essere il primary
-		}*/
+		}
 		if(rec->core.flag & BAM_FREAD1) {++mapped_count1;}
 		if(rec->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
 	}
@@ -169,7 +200,9 @@ long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1
 
 long double Runner::update_quadratic_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){ //<x^2> FORSE SBAGLIATA
 	long double xk = std::abs((long double)bamdata->core.isize);  // TLEN del record
-    return (pow(xk,2) / k) + ((k - 1) / (long double)k) * pow(prev_mean,2);
+	long double xk2 = xk * xk;
+ //   return (pow(xk,2) / k) + ((k - 1) / (long double)k) * pow(prev_mean,2);
+	return prev_mean + (xk2 - prev_mean) / (long double)k;
 }
 
 double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
@@ -262,7 +295,8 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 }
 	
 
-void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) { 
+void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
+//std::cout<<"processReads"<<std::endl; 
 	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
 	std::vector<bam1_t*> group;
 	std::string qname;
@@ -280,20 +314,25 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 	
 
 	while(sam_read1(fp_in, bamHdr, bamdata)>0) {
+//std::cout<<"nelwhile"<<std::endl;
 		pairStats.good_read1=false;
 		pairStats.good_read2=false;
 		++readStats.readN;
 		////FLAG STATS;		
-		if (bamdata->core.qual==0) {++readStats.mapQ0;}
+		if (!(bamdata->core.flag & BAM_FUNMAP) && bamdata->core.qual==0) {++readStats.mapQ0;}
 		flag_inspector(bamdata);
 
 		if (pairStats.good_read1 && bamdata->core.tid == bamdata->core.mtid) {
-			++av_counter;
+	//		++av_counter;
 			++pairStats.sameCr;
 
-			readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, bamdata);    //aggiungere controllo sull'orientamento delle letture di r1 e r2!
-			readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
-			
+if(((bamdata->core.flag & BAM_FREVERSE) != (bamdata->core.flag & BAM_FMREVERSE)) && std::abs((long double)bamdata->core.isize)>0){//così hanno sempre orientamenti opposti
+++av_counter;			
+readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, bamdata);   
+		//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
+ readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, bamdata);
+
+}
 			if(userInput.hist_global){ //HISTO_GLOBAL_DATA
 				dist=llabs(bamdata->core.pos - bamdata->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
 				++global_dist_count[dist]; 
@@ -318,29 +357,50 @@ void Runner::processReads(samFile *fp_in, bam_hdr_t *bamHdr, bam1_t *bamdata) {
 		if(qname_sorted){
  			if (first) {  // primo record
             	qname = bam_get_qname(bamdata);
-            	group.push_back(bam_dup1(bamdata));
+            	//group.push_back(bam_dup1(bamdata));
+		bam1_t* dup = bam_dup1(bamdata);
+                if (dup != nullptr) {
+                    group.push_back(dup);
+                }
+                first = false; // Spostato qui per sicurezza
         	} else {
             qname_group(bamdata, qname, group);
     		}
 		}
 			
-		first = false;
+	//	first = false;
 	}
 
 	if (qname_sorted && !group.empty()) {
-    	qname_stats(group);
-    	for (bam1_t *rec : group) bam_destroy1(rec);
+//if (group.size() > 1) {
+  //              qname_stats(group);
+    //        }
+	qname_stats(group);
+   // 	for (bam1_t *rec : group){
+		// bam_destroy1(rec);
+		for (bam1_t *rec : group) {
+//std::cout<<"prima di elimianre l'ultimo"<<std::endl;
+         	   if (rec != nullptr) {
+               		 bam_destroy1(rec);
+//std::cout<<"dopo averlo eliminato"<<std::endl;
+           	    }
+//       		 }
+	}
     	group.clear();
 	}
 
 	if(userInput.hist_global){histo_global_distance(global_dist_count);}
 	if (userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	pairStats.pairN=pairStats.pairN/2; 
+	if ((readStats.readN % 2) == 0) {
+		pairStats.pairN=readStats.readN/2;
+	} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
 	readStats.error_rate=error_rate(mismatched_bases,total_base);
+//std::cout<<"fuoridalwhile"<<std::endl;
 }
 
-void Runner::output(){ 
+void Runner::output(){
+//std::cout<<"dai output"<<std::endl; 
 	std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
 	std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
 	std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
@@ -348,9 +408,11 @@ void Runner::output(){
 	std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    //non mi escono percentuali se non forzo il double
 	std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
 	std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
+	std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
 	std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; // quanto debole come condizione il /2? controllo migliore con messaggio di errore per una frazione senza resto 0?
 	std::cout<<"Read1:"<<pairStats.read1<<std::endl; // non esplicitamente chiesti ma di controllo sul /2 
 	std::cout<<"Read2:"<<pairStats.read2<<std::endl;// non esplicitamente chiesti ma di controllo sul /2 
+	std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;
 	std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
 	std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
 	std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
@@ -360,15 +422,31 @@ void Runner::output(){
 	std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
 	std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 	std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
+	
+	std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+	std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
+	std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
+	std::cout<<"Reads_mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
+	std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
+	std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+	std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
+	std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
+	std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
+        std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
+ 	std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
+        std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
+        std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
+	
+
 }
 
 void Runner::run() {
-	
+//std::cout<<"DAI1"<<std::endl;	
 	std::size_t numFiles = userInput.inFiles.size();
 	lg.verbose("Processing " + std::to_string(numFiles) + " files");
 	
 	for (uint32_t i = 0; i < numFiles; ++i) {
-		
+//std::cout<<"numFiles"<<std::endl;
 		//uint64_t readCounter = 0;
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
@@ -385,6 +463,7 @@ void Runner::run() {
 		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
 
 		processReads(fp_in,bamHdr, bamdata);
+//std::cout<<"traprocessreadeoutput"<<std::endl;
 		output();
 
 		bam_hdr_destroy(bamHdr);
