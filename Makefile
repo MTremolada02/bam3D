@@ -15,7 +15,7 @@ BINDIR := $(BUILD)/.o
 LIBS = -lz -lhts
 LDFLAGS = -pthread
 
-OBJS := main runner
+OBJS := main newrunner #OBJS := main runner
 BINS := $(addprefix $(BINDIR)/, $(OBJS))
 
 head: $(BINS) bam3D | $(BUILD)#module2 

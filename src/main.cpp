@@ -13,7 +13,8 @@
 #include "functions.h"
 #include "threadpool.h"
 
-#include <runner.hpp>
+//#include <runner.hpp>
+#include <newrunner.hpp>
 #include <main.hpp>
 
 std::string version = "0.0.1";
