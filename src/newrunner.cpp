@@ -1,4 +1,4 @@
-#include <stdlib.h>
+ #include <stdlib.h>
 #include <unistd.h>
 #include <string>
 #include <thread>
@@ -407,11 +407,20 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 	}
 }
 
+<<<<<<< HEAD
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
 	std::string qname;
 	std::string current_qname;
 	bool bridge=true;
 	vectorbox.clear();
+=======
+int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &bridge_read, bool &bridge,bool &first , std::vector<int> &group_counter, samFile *fp_in, bam_hdr_t *bamHdr){
+	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
+	std::string qname;
+	std::string current_qname;
+	long unsigned int j=0;//indice dei vettori di record interni a vectorbox:ultima posizione piena zero compreso (tipo di dato per vectorbox[i-1].size()<=j+1 che evidentemente è un long unsigned int)
+	int boxes_filled=0;
+>>>>>>> d88969f (commit)
 
 	for (int i=0;i<vectorbox.get_size_wanted();++i){
 		if(bridge){
@@ -488,7 +497,7 @@ void Runner::run() {
 				data_vector(records_vector,fp_in,bamHdr);
 			}
 			processReads(records_vector);
-		}
+                }
 
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 
