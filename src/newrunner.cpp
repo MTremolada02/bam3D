@@ -56,11 +56,11 @@ void Runner::qname_stats(std::vector<bam1_t*> &group, int group_size){
 	Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
 //////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
 	for(int i=0; i<group_size; ++i){
-		if (group[i]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
-    	if (group[i]->core.flag & BAM_FUNMAP) continue;
+		if (group.at(i)->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
+    	if (group.at(i)->core.flag & BAM_FUNMAP) continue;
 
-    	if (group[i]->core.flag & BAM_FREAD1) r1_side.push_back(group[i]);
-    	if (group[i]->core.flag & BAM_FREAD2) r2_side.push_back(group[i]);
+    	if (group.at(i)->core.flag & BAM_FREAD1) r1_side.push_back(group.at(i));
+    	if (group.at(i)->core.flag & BAM_FREAD2) r2_side.push_back(group.at(i));
 	}
 
 	if(r1_side.size()>=2 || r2_side.size()>=2){
@@ -79,15 +79,15 @@ void Runner::qname_stats(std::vector<bam1_t*> &group, int group_size){
 		return;
 		}
 
-		if (Alignstarts((*chim)[0]) > Alignstarts((*chim)[1])) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
-			std::swap((*chim)[0], (*chim)[1]);///////non tanto chiaro
+		if (Alignstarts((*chim).at(0)) > Alignstarts((*chim).at(1))) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
+			std::swap((*chim).at(0), (*chim).at(1));///////non tanto chiaro
 		}//ora chim[0] è l'outer, [1]è l'inner e l'altro è automaticamente l'other
-		bool rev_i = (*chim)[1]->core.flag & BAM_FREVERSE;
-		bool rev_o = (*other)[0]->core.flag & BAM_FREVERSE;
+		bool rev_i = (*chim).at(1)->core.flag & BAM_FREVERSE;
+		bool rev_o = (*other).at(0)->core.flag & BAM_FREVERSE;
 		//controlli 
-		if(((*chim)[1])->core.tid==((*other)[0])->core.tid) {cis=true;} 
-		if((!rev_i &&  rev_o && (*chim)[1]->core.pos <= (*other)[0]->core.pos) || ( rev_i && !rev_o && (*other)[0]->core.pos <= (*chim)[1]->core.pos)) {facing=true;}
-		if(llabs((*chim)[1]->core.pos - (*other)[0]->core.pos) <= 2000) {distance=true;}////di default 2000 pb
+		if(((*chim).at(1))->core.tid==((*other).at(0))->core.tid) {cis=true;} 
+		if((!rev_i &&  rev_o && (*chim).at(1)->core.pos <= (*other).at(0)->core.pos) || ( rev_i && !rev_o && (*other).at(0)->core.pos <= (*chim).at(1)->core.pos)) {facing=true;}
+		if(llabs((*chim).at(1)->core.pos - (*other).at(0)->core.pos) <= 2000) {distance=true;}////di default 2000 pb
 
 		if(cis && facing && distance) {
 			rescued=true;
@@ -99,20 +99,20 @@ void Runner::qname_stats(std::vector<bam1_t*> &group, int group_size){
 
 //////pair stats
 	for(int i=0; i<group_size; ++i){
-		if(group[i]->core.flag & BAM_FUNMAP) {continue;}
-		if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
-		if(!(group[i]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
+		if(group.at(i)->core.flag & BAM_FUNMAP) {continue;}
+		if(group.at(i)->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
+		if(!(group.at(i)->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
 
-		if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
+		if(!(group.at(i)->core.flag & BAM_FSECONDARY) && group.at(i)->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
 			++qnameStats.DD;
 			return;
 		}
-		if(group[i]->core.flag & BAM_FREAD1) {
-			if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;}
+		if(group.at(i)->core.flag & BAM_FREAD1) {
+			if(group.at(i)->core.flag & BAM_FSECONDARY) {mapped_count1++;}
 			else{mapped_count1++;} //dovrebbe essere il primary
 		}
-		if(group[i]->core.flag & BAM_FREAD1) {++mapped_count1;}
-		if(group[i]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
+		if(group.at(i)->core.flag & BAM_FREAD1) {++mapped_count1;}
+		if(group.at(i)->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
 	}
 
 	a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
@@ -255,47 +255,47 @@ void Runner::processReads(bam_hdr_t* bamHdr , std::vector<std::vector<bam1_t*>> 
 	uint64_t dist=0;
 	
 	for(int i=0;i<boxes_filled;++i){ //sono sempre lo stesso numero aparte l'ultimo giro che può essere incompleto
-		for(int k=0; k<group_counter[i]; ++k){   //j
+		for(int k=0; k<group_counter.at(i); ++k){   //j
 			pairStats.good_read1=false;
 			pairStats.good_read2=false;
 			++readStats.readN;
 			////FLAG STATS;		
-			if (!(vectorbox[i][k]->core.flag & BAM_FUNMAP) && vectorbox[i][k]->core.qual==0) {++readStats.mapQ0;}
-			flag_inspector(vectorbox[i][k]);
+			if (!(vectorbox.at(i).at(k)->core.flag & BAM_FUNMAP) && vectorbox.at(i).at(k)->core.qual==0) {++readStats.mapQ0;}
+			flag_inspector(vectorbox.at(i).at(k));
 
-			if (pairStats.good_read1 && vectorbox[i][k]->core.tid == vectorbox[i][k]->core.mtid) {
+			if (pairStats.good_read1 && vectorbox.at(i).at(k)->core.tid == vectorbox.at(i).at(k)->core.mtid) {
 				++pairStats.sameCr;
 
-				if(((vectorbox[i][k]->core.flag & BAM_FREVERSE) != (vectorbox[i][k]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i][k]->core.isize)>0){//così hanno sempre orientamenti opposti
+				if(((vectorbox.at(i).at(k)->core.flag & BAM_FREVERSE) != (vectorbox.at(i).at(k)->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox.at(i).at(k)->core.isize)>0){//così hanno sempre orientamenti opposti
 					++av_counter;			
-					readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i][k]);   
+					readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox.at(i).at(k));   
 					//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
- 					readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i][k]);
+ 					readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox.at(i).at(k));
 
 				}
 				if(userInput.hist_global){ //HISTO_GLOBAL_DATA
-					dist=llabs(vectorbox[i][k]->core.pos - vectorbox[i][k]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
+					dist=llabs(vectorbox.at(i).at(k)->core.pos - vectorbox.at(i).at(k)->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
 					++global_dist_count[dist]; 
 				}
 			
 				if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
-					chrom=vectorbox[i][k]->core.tid;
-					dist=llabs(vectorbox[i][k]->core.pos - vectorbox[i][k]->core.mpos);
+					chrom=vectorbox.at(i).at(k)->core.tid;
+					dist=llabs(vectorbox.at(i).at(k)->core.pos - vectorbox.at(i).at(k)->core.mpos);
 					++chrom_dist_count[chrom][dist];
 				}
 			}
 
 			if (pairStats.good_read1 || pairStats.good_read2) { 
-				uint8_t* nm_ptr = bam_aux_get(vectorbox[i][k], "NM");//diff tra a read e il riferimento
+				uint8_t* nm_ptr = bam_aux_get(vectorbox.at(i).at(k), "NM");//diff tra a read e il riferimento
     			uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
 
     			mismatched_bases += nm;  
-    			uint64_t aligned = bam_cigar2rlen(vectorbox[i][k]->core.n_cigar, bam_get_cigar(vectorbox[i][k])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
+    			uint64_t aligned = bam_cigar2rlen(vectorbox.at(i).at(k)->core.n_cigar, bam_get_cigar(vectorbox.at(i).at(k))); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
     			total_base += aligned;
 			} 
 		}
 		if(qname_sorted){ 
-			qname_stats(vectorbox[i], group_counter[i]); //fa le statistiche sui qname per ogni gruppo
+			qname_stats(vectorbox.at(i), group_counter.at(i)); //fa le statistiche sui qname per ogni gruppo
 		}
 	}	
 
@@ -360,7 +360,7 @@ int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &b
 
 	if(!qname_sorted){
 		for (int i=0;i<10;++i){
-			if(sam_read1(fp_in, bamHdr, vectorbox[i][0]) <0){
+			if(sam_read1(fp_in, bamHdr, vectorbox.at(i).at(0)) <0){
 				return i;
 			}else{
 				boxes_filled=i+1;
@@ -372,46 +372,46 @@ int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &b
 		for(int i=0; i<11; ++i){ //ora vector box è nella posizione [i][0] piena del record i-esimo corrente (first e bridge a parte)
 
 			if (bridge){//primo record dopo ogni cambio di vettore (quindi i,j=1->[0][0])
-				bam_copy1(vectorbox[0][0],bridge_read);
-				qname = bam_get_qname(vectorbox[0][0]);
-				group_counter[0]=1;
+				bam_copy1(vectorbox.at(0).at(0),bridge_read);
+				qname = bam_get_qname(vectorbox.at(0).at(0));
+				group_counter.at(0)=1;
 			    boxes_filled=1;
 				bridge=false; 
 				continue;
 			}else{
-				if(sam_read1(fp_in, bamHdr, vectorbox[i][0]) <0){
+				if(sam_read1(fp_in, bamHdr, vectorbox.at(i).at(0)) <0){
 					return i+1;
 				}
 			}
 
 			if (first){ // per il primo in assoluto quindi [0][0] del primissimo thread di tutto il file
-				qname = bam_get_qname(vectorbox[i][0]);
-				group_counter[0]=1;
+				qname = bam_get_qname(vectorbox.at(i).at(0));
+				group_counter.at(0)=1;
 				boxes_filled=1;
 				first = false;
 				continue;
 			}
 				
-			current_qname=bam_get_qname(vectorbox[i][0]);
+			current_qname=bam_get_qname(vectorbox.at(i).at(0));
 
 			if(strcmp(current_qname.c_str(), qname.c_str())==0){//devo salvarlo nella posizione i precedente ma j successiva al j attuale del sottovettore del vectorbox
-				if(vectorbox[i-1].size()<=j+1){//controllo se esiste già uno spazio da sovrascrivere nella pozione i-1
-					vectorbox[i-1].push_back(bam_init1());
-					bam_copy1(vectorbox[i-1][j+1], vectorbox[i][0]);
+				if(vectorbox.at(i-1).size()<=j+1){//controllo se esiste già uno spazio da sovrascrivere nella pozione i-1
+					vectorbox.at(i-1).push_back(bam_init1());
+					bam_copy1(vectorbox.at(i-1).at(j+1), vectorbox.at(i).at(0));
 				}else {//lo spazio c'è già:saremo al secondo giro. potrei usare swap ma così uso puntatori, posso solo sovrascrivere
-					bam_copy1(vectorbox[i-1][j+1], vectorbox[i][0]);
+					bam_copy1(vectorbox.at(i-1).at(j+1), vectorbox.at(i).at(0));
 				}
 				++j;//al secondo giro j vale 1
-				group_counter[i-1]=j+1;
+				group_counter.at(i-1)=j+1;
 				--i;
 			} else {//quindi qname diverso
 				if(i==10){ //ultimo giro
 					bridge=true;
-					bam_copy1(bridge_read,vectorbox[10][0]);
+					bam_copy1(bridge_read,vectorbox.at(10).at(0));
 				} else {
-					qname=bam_get_qname(vectorbox[i][0]);
+					qname=bam_get_qname(vectorbox.at(i).at(0));
 					j=0; //primo record del nuovo gruppo con j=0
-					group_counter[i]=1;
+					group_counter.at(i)=1;
 					boxes_filled=i+1;
 				}
 			}
