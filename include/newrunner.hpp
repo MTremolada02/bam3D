@@ -3,6 +3,10 @@
 
 #include <htslib/sam.h>
 #include <map>
+#include <vector>
+#include <stdexcept>
+#include <cstddef>
+#include <algorithm>
 
 struct UserInputBam3D : UserInput { // additional input
 	bool hist_none        =false;
@@ -65,7 +69,43 @@ struct QnameStats {
 	uint64_t NN=0;
 };
 
-class Runner {
+class Bam_record_vector {
+public:
+    explicit Bam_record_vector(std::size_t initial_capacity);
+    ~Bam_record_vector();
+
+    // non-copyable
+    Bam_record_vector(const Bam_record_vector&) = delete;
+    Bam_record_vector& operator=(const Bam_record_vector&) = delete;
+
+    // movable
+    Bam_record_vector(Bam_record_vector&& other) noexcept;
+    Bam_record_vector& operator=(Bam_record_vector&& other) noexcept;
+
+    // main API
+    bam1_t* push_copy(const bam1_t* src);
+    const char* current_qname() const noexcept;
+
+    // container-like helpers
+    void clear() noexcept;
+    std::size_t size() const noexcept;
+    std::size_t capacity() const noexcept;
+
+	bool add_record(samFile *fp_in,bam_hdr_t *bamHdr);
+
+    bam1_t* operator[](std::size_t i) noexcept;
+    const bam1_t* operator[](std::size_t i) const noexcept;
+
+private:
+    void expand(std::size_t new_capacity);
+
+    std::vector<bam1_t*> slots; //o meglio allocarla con new?
+	std::size_t size_wanted;
+    std::size_t used = 0; //il primom libero
+    int hiwater_data = 0;
+};
+
+class Runner : public Bam_record_vector {
     
     UserInputBam3D userInput;
 	ReadStats readStats;
@@ -83,7 +123,8 @@ public:
 	void flag_inspector(bam1_t*);
 	void histo_global_distance(std::unordered_map<uint64_t, uint64_t>&);
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
-    int data_vector(std::vector<std::vector<bam1_t*>> &, bam1_t* &, bool &, std::vector<int> &, samFile *, bam_hdr_t *);
+    void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
+	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
 	void processReads(bam_hdr_t*, std::vector<std::vector<bam1_t*>> &, int , std::vector<int>&);
 	void output();
 	void run();
@@ -91,3 +132,71 @@ public:
 };
 
 #endif /* newrunner_hpp */
+
+/*
+class bam_record_vector {
+private:
+	bam1_t** reads;      // specie di array di puntatori a *bam1_t (scatola da cui partono tutti i puntatori a bam1_t)
+    uint8_t capacity;        // Quanti puntatori bam1_t allocati ho
+    uint8_t size;            // a quante read sono arrivata per questo group (counter) (è la prima libera perchè sempre a i+1)
+
+public: 
+    qnameGroup(){ //costruttore di default
+		size=0;
+		capacity=4;
+		reads = (bam1_t**)malloc(capacity * sizeof(bam1_t*)); //tengo da parte della memoria(grande tanto quando un bam1_t) per i puntatori , ALLOCATI CON MALLOC SONO CONTIGUI!
+        for (uint8_t i = 0; i < capacity; ++i) {//alloca le 4 strutture vuote
+            reads[i] = bam_init1();
+        }
+    }
+
+	~qnameGroup() {
+        if (reads) {
+            for (int i = 0; i < capacity; ++i) {
+                bam_destroy1(reads[i]);
+            }
+            free(reads); // free a block allocated by malloc(def)
+        }
+    }
+	
+	void expand(){ //push_back se size==capacity
+		uint8_t old_capacity = capacity;
+		capacity *= 2; // Raddoppiamo lo spazio
+		reads = (bam1_t**)realloc(reads, capacity * sizeof(bam1_t*)); //se c'è spazio lo aumenta oltre se stesso (se è finita la memoria reads punerà a NULL e crasha tutto)
+		for (uint8_t i = old_capacity; i < capacity; ++i) {//aggiungiamo costruttori vuoti in coda
+     		reads[i] = bam_init1();
+    	}
+
+	}
+
+	void clear(){size=0;} //contatore uguale a 0 (capacity rimane uguale)
+
+	inline uint8_t get_size(){return size;}
+	
+	inline uint8_t get_capacity(){return capacity;}
+	
+	void add_size() {
+		if(capacity==size){
+			expand();
+		}
+		++size;
+	}
+	
+	inline bam1_t* get_read(uint8_t index) const {
+        return reads[index];
+    }
+
+	void add_read(bam1_t* source) {
+    	if (size == capacity) {
+       	 expand(); 
+   	 	}
+   		bam_copy1(reads[size], source);
+    	size++;
+	}
+
+	const char* get_current_qname() {  // se la scatola è vuota mi ridarà null e crasha
+		return bam_get_qname(get_read[size-1]);
+	}
+
+};
+*/

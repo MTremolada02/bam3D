@@ -242,8 +242,7 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 }
 	
 
-void Runner::processReads(bam_hdr_t* bamHdr , std::vector<std::vector<bam1_t*>> &vectorbox, int boxes_filled, std::vector<int> &group_counter) {
-	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;!!!!!! posso anche passarla ocme argomento
+void Runner::processReads(bam_hdr_t* bamHdr, Bam_record_vector &vectorbox) {
 	uint64_t av_counter=0;
 	
 	uint64_t mismatched_bases=0;
@@ -254,51 +253,46 @@ void Runner::processReads(bam_hdr_t* bamHdr , std::vector<std::vector<bam1_t*>> 
 	uint32_t chrom=0;
 	uint64_t dist=0;
 	
-	for(int i=0;i<boxes_filled;++i){ //sono sempre lo stesso numero aparte l'ultimo giro che può essere incompleto
-		for(int k=0; k<group_counter.at(i); ++k){   //j
+	for(int i=0;i<vectorbox.size();++i){
 			pairStats.good_read1=false;
 			pairStats.good_read2=false;
 			++readStats.readN;
 			////FLAG STATS;		
-			if (!(vectorbox.at(i).at(k)->core.flag & BAM_FUNMAP) && vectorbox.at(i).at(k)->core.qual==0) {++readStats.mapQ0;}
-			flag_inspector(vectorbox.at(i).at(k));
+			if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+			flag_inspector(vectorbox[i]);
 
-			if (pairStats.good_read1 && vectorbox.at(i).at(k)->core.tid == vectorbox.at(i).at(k)->core.mtid) {
+			if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
 				++pairStats.sameCr;
 
-				if(((vectorbox.at(i).at(k)->core.flag & BAM_FREVERSE) != (vectorbox.at(i).at(k)->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox.at(i).at(k)->core.isize)>0){//così hanno sempre orientamenti opposti
+				if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
 					++av_counter;			
-					readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox.at(i).at(k));   
+					readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i]);   
 					//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
- 					readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox.at(i).at(k));
+ 					readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i]);
 
 				}
 				if(userInput.hist_global){ //HISTO_GLOBAL_DATA
-					dist=llabs(vectorbox.at(i).at(k)->core.pos - vectorbox.at(i).at(k)->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
+					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
 					++global_dist_count[dist]; 
 				}
 			
 				if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
-					chrom=vectorbox.at(i).at(k)->core.tid;
-					dist=llabs(vectorbox.at(i).at(k)->core.pos - vectorbox.at(i).at(k)->core.mpos);
+					chrom=vectorbox[i]->core.tid;
+					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
 					++chrom_dist_count[chrom][dist];
 				}
 			}
 
 			if (pairStats.good_read1 || pairStats.good_read2) { 
-				uint8_t* nm_ptr = bam_aux_get(vectorbox.at(i).at(k), "NM");//diff tra a read e il riferimento
+				uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
     			uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
 
     			mismatched_bases += nm;  
-    			uint64_t aligned = bam_cigar2rlen(vectorbox.at(i).at(k)->core.n_cigar, bam_get_cigar(vectorbox.at(i).at(k))); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
+    			uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
     			total_base += aligned;
 			} 
-		}
-		if(qname_sorted){ 
-			qname_stats(vectorbox.at(i), group_counter.at(i)); //fa le statistiche sui qname per ogni gruppo
-		}
-	}	
-
+	}
+	
 	if(userInput.hist_global){histo_global_distance(global_dist_count);}
 	if (userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
@@ -348,16 +342,210 @@ void Runner::output(){
 	
 
 }
- 
 
-int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &bridge_read, bool &bridge, std::vector<int> &group_counter, samFile *fp_in, bam_hdr_t *bamHdr){
+void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
+	vectorbox.clear();
+	for (int i=0; i<vectorbox.size_wanted();++i){ 
+		if(!vectorbox.add_record(fp_in,bamHdr))
+			break;
+	}
+}
+
+void Runner::data_vector(std::vector<qnameGroup> &vectorbox, bam1_t* &bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
+	std::string qname;
+	std::string current_qname;
+	bool bridge=true;
+	vectorbox.clear();
+
+	for (int i=0;i<vectorbox.size_wanted();++i){
+
+		if(bridge){
+			if(first){//:( 
+				add_record(fp_in,bamHdr);
+			}else{
+				vectorbox.push_back(bridge_read);
+			}
+			bridge=false;
+			continue;
+		}
+		add_record(fp_in,bamHdr);
+	}
+
+	qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
+	for(;;){
+		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
+			current_qname=bam_get_qname(bridge_read);
+			if(!(current_qname==qname)){break;}
+			push_back(bridge_read;)
+		}else{break;}
+	}
+}
+
+void Runner::run() {
+	std::size_t numFiles = userInput.inFiles.size();
+	lg.verbose("Processing " + std::to_string(numFiles) + " files");
+	
+	for (uint32_t i = 0; i < numFiles; ++i) {
+
+		std::string file = userInput.file('r', i);
+		std::string ext = getFileExt(file);
+		
+		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"rb"); //open bam file!!!!!!!!!!!!!!!!!!!!!!!
+		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); //read header
+		
+		htsThreadPool tpool_read = {NULL, 0};
+		tpool_read.pool = hts_tpool_init(userInput.decompression_threads);
+		if (tpool_read.pool) {	hts_set_opt(fp_in, HTS_OPT_THREAD_POOL, &tpool_read);
+		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
+
+		bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
+		int i=10;//set real capacity
+		bool first=true;
+
+		Bam_record_vector records_vector(i); 
+		bam1_t *bridge_read=bam1_init();
+		bool first;
+
+
+		while(true){?
+		if(!qname_sorted){ //fillare la classe per un file non sortato
+			data_vector(records_vector,fp_in,bamHdr);
+		}else{//fillarla nel caso sortato
+			data_vector(records_vector, bam1_t* &bridge_read, bool &first, samFile *fp_in, bam_hdr_t *bamHdr);
+		}
+
+			processReads(records_vector); //statistiche tipo samtools
+			qgroupStats(records_vector);
+			if (!bridge) break; // Se non c'è un bridge, il file è finito
+		}
+
+		output();
+		
+	for (std::size_t int i = 0; i < vectorbox.capacity(); ++i) { //warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::vector<bam1_t*> >::size_type’ {aka ‘long unsigned int
+    	for (bam1_t* b : vectorbox[i]) {
+      	  bam_destroy1(b);
+    	}
+    	vectorbox.clear();
+	}
+		bam_hdr_destroy(bamHdr);
+		bam_destroy1(bridge_read);
+		sam_close(fp_in);
+		if (tpool_read.pool)
+		hts_tpool_destroy(tpool_read.pool);
+	}
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////class functions definition
+
+Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
+    : used(0), hiwater_data(0), size_wanted(0)
+{
+    slots.reserve(initial_capacity);
+	size_wanted=initial_capacity;
+    for (std::size_t i = 0; i < initial_capacity; ++i)
+        slots.push_back(bam_init1());
+}
+
+Bam_record_vector::Bam_record_
+
+Bam_record_vector::~Bam_record_vector() {
+    for (auto* b : slots) bam_destroy1(b);
+}
+
+Bam_record_vector::Bam_record_vector(const Bam_record_vector&) = delete;
+Bam_record_vector::Bam_record_vector& operator=(const Bam_record_vector&) = delete;
+
+Bam_record_vector::Bam_record_vector(Bam_record_vector&& other) noexcept
+    : slots(std::move(other.slots)),
+    used(other.used),
+    hiwater_data(other.hiwater_data)
+{
+    other.used= 0;
+    other.hiwater_data= 0;
+}
+ 
+Bam_record_vector::Bam_record_vector& operator=(Bam_record_vector&& other) noexcept {
+    if (this == &other) return *this;
+    for (auto* b : slots) bam_destroy1(b);
+    slots= std::move(other.slots);
+    used= other.used;
+    hiwater_data= other.hiwater_data;
+    other.used= 0;
+    other.hiwater_data= 0;
+    return *this;
+}
+
+void Bam_record_vector::clear() noexcept { used=0;}
+
+std::size_t Bam_record_vector::size() const noexcept { return used; }
+std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
+std::size_t Bam_record_vector::size_wanted() const noexcept {return size_wanted;}
+
+bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots[i]; }
+const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
+
+bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
+	if(used==slots.size()){expand(slots.empty() ? 10 : slots.size() * 2);}
+	if(sam_read1(fp_in, bamHdr, slots[used])>=0){
+		++used;
+		return true;
+	} else {return false;}
+}
+
+bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al primo slot libero del vectorbox.
+    if (used== slots.size())
+        expand(slots.empty() ? 10 : slots.size() * 2);//se p empty per qualche motivo a cosa lo metto aiuto ahahha
+
+    bam1_t* dst = slots[used];
+
+    const int need = src->l_data;
+    if (need > 0) {
+        const int target = std::max(need, hiwater_data);
+        if (target > dst->m_data) {
+            if (bam_resize1(dst, target) != 0)
+                throw std::bad_alloc();
+        }
+    }
+
+    bam_copy1(dst, src);
+    ++used;
+
+    hiwater_data= std::max<int>(hiwater_data, dst->l_data);
+
+	return dst;
+}
+
+const char* Bam_record_vector::current_qname() const noexcept {
+    if (used==0) return nullptr;
+    return bam_get_qname(slots[used- 1]);
+}
+
+void Bam_record_vector::expand(std::size_t new_capacity) {
+    if (new_capacity <= slots.size()) return;
+    slots.reserve(new_capacity);
+    while (slots.size() < new_capacity) {
+        bam1_t* b = bam_init1();
+        if (!b) throw std::bad_alloc();
+
+        if (hiwater_data> 0) {
+            if (bam_resize1(b, hiwater_data) != 0) {
+                bam_destroy1(b);
+                throw std::bad_alloc();
+            }
+        }
+
+        slots.push_back(b);
+    }
+}
+/*int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &bridge_read, bool &bridge, std::vector<int> &group_counter, samFile *fp_in, bam_hdr_t *bamHdr){
 	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
 	std::string qname;
 	std::string current_qname;
 	long unsigned int j=0;//indice dei vettori di record interni a vectorbox:ultima posizione piena zero compreso (tipo di dato per vectorbox[i-1].size()<=j+1 che evidentemente è un long unsigned int)
 	int boxes_filled=0;
 	if(!bridge){bool first = true;}//fist reading
-
+vectorbox.clear();
 	if(!qname_sorted){
 		for (int i=0;i<10;++i){
 			if(sam_read1(fp_in, bamHdr, vectorbox.at(i).at(0)) <0){
@@ -419,54 +607,4 @@ int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &b
 		return boxes_filled;
 	}
 } 
-
-void Runner::run() {
-	std::size_t numFiles = userInput.inFiles.size();
-	lg.verbose("Processing " + std::to_string(numFiles) + " files");
-	
-	for (uint32_t i = 0; i < numFiles; ++i) {
-
-		std::string file = userInput.file('r', i);
-		std::string ext = getFileExt(file);
-		
-		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"r"); //open bam file
-		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); //read header
-		
-		htsThreadPool tpool_read = {NULL, 0};
-		tpool_read.pool = hts_tpool_init(userInput.decompression_threads);
-		if (tpool_read.pool) {	hts_set_opt(fp_in, HTS_OPT_THREAD_POOL, &tpool_read);
-		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
-
-		std::vector<std::vector<bam1_t*>> vectorbox; //vettori di vettori, i quali conterranno almeno un record al loro interno
-		std::vector<int> group_counter(10); //vettore di indici
-		bool bridge=false;
-		bam1_t *bridge_read= bam_init1(); 
-		
-		for (int i=0; i<11; ++i){vectorbox[i].push_back(bam_init1());} // lo riempio e rimarrà con le stract vuote (11 perchè l'ultimo mi serve per il bridge) 
-		//ne ho bisogno uno per ogni thread
-//decompression e reading thread
-		
-		while(true){
-			int boxes_filled=data_vector(vectorbox, bridge_read, bridge, group_counter,fp_in, bamHdr); //riempie vectorbox con i record del file in input
-			processReads(bamHdr, vectorbox, boxes_filled, group_counter); //statistiche tipo samtools
-			if (!bridge) break; // Se non c'è un bridge, il file è finito
-		}
-
-		output();
-		//devo farne uno per thread
-
-	for (long unsigned int i = 0; i < vectorbox.size(); ++i) { //warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::vector<bam1_t*> >::size_type’ {aka ‘long unsigned int
-    	for (bam1_t* b : vectorbox[i]) {
-      	  bam_destroy1(b);
-    	}
-    	vectorbox[i].clear(); // Opzionale: azzera la size per sicurezza
-	}
-		bam_hdr_destroy(bamHdr);
-		bam_destroy1(bridge_read);
-		sam_close(fp_in);
-		if (tpool_read.pool)
-		hts_tpool_destroy(tpool_read.pool);
-	}
-}
-
-
+*/
