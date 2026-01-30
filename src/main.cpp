@@ -13,8 +13,8 @@
 #include "functions.h"
 #include "threadpool.h"
 
-//#include <runner.hpp>
-#include <newrunner.hpp>
+#include <runner.hpp>
+//#include <newrunner.hpp>
 #include <main.hpp>
 
 std::string version = "0.0.1";
@@ -200,8 +200,9 @@ int main(int argc, char **argv) {
     
 //    std::cout<<"Invoking: "<<cmd<<std::endl;
 //    std::system(cmd.c_str());
-    
+   // std::cout<<"prima di chiamare il runner"<<std::endl;
     Runner runner;
+   // std::cout<<"dopo"<<std::endl;
     threadPool.init(maxThreads); // initialize threadpool
     maxMem = (userInput.maxMem == 0 ? get_mem_total(3) * 0.9 : userInput.maxMem); // set memory limit
     runner.loadInput(userInput); // load user input

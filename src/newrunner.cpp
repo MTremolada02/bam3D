@@ -242,7 +242,7 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 }
 	
 
-void Runner::processReads(bam_hdr_t* bamHdr, Bam_record_vector &vectorbox) {
+void Runner::processReads(Bam_record_vector &vectorbox) {
 	uint64_t av_counter=0;
 	
 	uint64_t mismatched_bases=0;
@@ -292,7 +292,7 @@ void Runner::processReads(bam_hdr_t* bamHdr, Bam_record_vector &vectorbox) {
     			total_base += aligned;
 			} 
 	}
-	
+
 	if(userInput.hist_global){histo_global_distance(global_dist_count);}
 	if (userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
@@ -342,46 +342,50 @@ void Runner::output(){
 	
 
 }
-
+ 
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
 	vectorbox.clear();
-	for (int i=0; i<vectorbox.size_wanted();++i){ 
+	for (int i=0; i<vectorbox.get_size_wanted();++i){ 
 		if(!vectorbox.add_record(fp_in,bamHdr))
 			break;
 	}
 }
 
-void Runner::data_vector(std::vector<qnameGroup> &vectorbox, bam1_t* &bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
+void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
+	std::cout<<"dentro al data vector"<<std::endl;
 	std::string qname;
 	std::string current_qname;
 	bool bridge=true;
 	vectorbox.clear();
 
-	for (int i=0;i<vectorbox.size_wanted();++i){
-
+	for (int i=0;i<vectorbox.get_size_wanted();++i){
+std::cout<<i<<std::endl;
 		if(bridge){
-			if(first){//:( 
-				add_record(fp_in,bamHdr);
+			if(first){//:( come faccio
+				vectorbox.add_record(fp_in,bamHdr);
+				first =false;
 			}else{
 				vectorbox.push_back(bridge_read);
 			}
 			bridge=false;
 			continue;
 		}
-		add_record(fp_in,bamHdr);
+		vectorbox.add_record(fp_in,bamHdr);
 	}
 
 	qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
-			current_qname=bam_get_qname(bridge_read);
-			if(!(current_qname==qname)){break;}
-			push_back(bridge_read;)
+			current_qname=vectorbox.current_qname();
+			if(!(current_qname==qname)){
+				break;}
+			vectorbox.push_back(bridge_read);
 		}else{break;}
 	}
 }
 
 void Runner::run() {
+	//std::cout<<"dai che fai"<<std::endl;
 	std::size_t numFiles = userInput.inFiles.size();
 	lg.verbose("Processing " + std::to_string(numFiles) + " files");
 	
@@ -390,8 +394,10 @@ void Runner::run() {
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
 		
-		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"rb"); //open bam file!!!!!!!!!!!!!!!!!!!!!!!
+		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"r"); //open bam file!!!!!!!!!!!!!!!!!!!!!!!
+		if (!fp_in) {std::cout<<"hts_open has failed"<<std::endl;}
 		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); //read header
+		if (!bamHdr) {std::cout<<"sam_hdr_read has failed"<<std::endl;}
 		
 		htsThreadPool tpool_read = {NULL, 0};
 		tpool_read.pool = hts_tpool_init(userInput.decompression_threads);
@@ -399,34 +405,32 @@ void Runner::run() {
 		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
 
 		bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
-		int i=10;//set real capacity
+		std::size_t j=10;//set real capacity
 		bool first=true;
 
-		Bam_record_vector records_vector(i); 
-		bam1_t *bridge_read=bam1_init();
-		bool first;
+		//std::cout<<"prima di creare il record_vector"<<std::endl;
+		Bam_record_vector records_vector(j); 
+		bam1_t *bridge_read=bam_init1();
+		int f=0;
+		//std::cout<<"dopo aver creato il record_vector"<<std::endl;
 
+		while(!(records_vector.is_file_end())){ 
+			//caricare le box////////////////////////////////////////////////////
+			if(qname_sorted){ //fillare la classe per un file sortato
+				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
+			}else{//fillarla nel caso nonsortato
+				data_vector(records_vector,fp_in,bamHdr);
+			}
 
-		while(true){?
-		if(!qname_sorted){ //fillare la classe per un file non sortato
-			data_vector(records_vector,fp_in,bamHdr);
-		}else{//fillarla nel caso sortato
-			data_vector(records_vector, bam1_t* &bridge_read, bool &first, samFile *fp_in, bam_hdr_t *bamHdr);
-		}
-
-			processReads(records_vector); //statistiche tipo samtools
-			qgroupStats(records_vector);
-			if (!bridge) break; // Se non c'è un bridge, il file è finito
+			processReads(records_vector);
+		 //statistiche tipo samtools
+			//qgroupStats(records_vector);
+			//std::cout<<"dopo i process read"<<std::endl;
+			//++f;
 		}
 
 		output();
 		
-	for (std::size_t int i = 0; i < vectorbox.capacity(); ++i) { //warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::vector<bam1_t*> >::size_type’ {aka ‘long unsigned int
-    	for (bam1_t* b : vectorbox[i]) {
-      	  bam_destroy1(b);
-    	}
-    	vectorbox.clear();
-	}
 		bam_hdr_destroy(bamHdr);
 		bam_destroy1(bridge_read);
 		sam_close(fp_in);
@@ -439,7 +443,7 @@ void Runner::run() {
 //////////////////////////////////////////////////////////////////////////////////////////class functions definition
 
 Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
-    : used(0), hiwater_data(0), size_wanted(0)
+    : used(0), hiwater_data(0), size_wanted(0), file_end(false)
 {
     slots.reserve(initial_capacity);
 	size_wanted=initial_capacity;
@@ -447,32 +451,38 @@ Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
         slots.push_back(bam_init1());
 }
 
-Bam_record_vector::Bam_record_
-
 Bam_record_vector::~Bam_record_vector() {
-    for (auto* b : slots) bam_destroy1(b);
+   for (auto* b : slots) bam_destroy1(b);
 }
 
-Bam_record_vector::Bam_record_vector(const Bam_record_vector&) = delete;
-Bam_record_vector::Bam_record_vector& operator=(const Bam_record_vector&) = delete;
-
-Bam_record_vector::Bam_record_vector(Bam_record_vector&& other) noexcept
+Bam_record_vector::Bam_record_vector(Bam_record_vector&& other) noexcept //move contructor
     : slots(std::move(other.slots)),
     used(other.used),
-    hiwater_data(other.hiwater_data)
+    hiwater_data(other.hiwater_data),
+	size_wanted(other.size_wanted),
+    file_end(other.file_end)
 {
+	other.slots.clear();
     other.used= 0;
     other.hiwater_data= 0;
+	other.size_wanted = 0;
+    other.file_end = false;
 }
- 
-Bam_record_vector::Bam_record_vector& operator=(Bam_record_vector&& other) noexcept {
+Bam_record_vector& Bam_record_vector::operator=(Bam_record_vector&& other) noexcept{ //omve assignment operator
     if (this == &other) return *this;
-    for (auto* b : slots) bam_destroy1(b);
-    slots= std::move(other.slots);
-    used= other.used;
-    hiwater_data= other.hiwater_data;
-    other.used= 0;
-    other.hiwater_data= 0;
+    	for (auto* b : slots) bam_destroy1(b);
+
+    	slots= std::move(other.slots);
+    	used= other.used;
+   		hiwater_data= other.hiwater_data;
+		size_wanted = other.size_wanted;
+    	file_end = other.file_end;
+
+		other.slots.clear();
+    	other.used= 0;
+    	other.hiwater_data= 0;
+		other.size_wanted = 0;
+        other.file_end = false;
     return *this;
 }
 
@@ -480,9 +490,10 @@ void Bam_record_vector::clear() noexcept { used=0;}
 
 std::size_t Bam_record_vector::size() const noexcept { return used; }
 std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
-std::size_t Bam_record_vector::size_wanted() const noexcept {return size_wanted;}
+std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wanted;}
+bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
 
-bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots[i]; }
+bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
 const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
 
 bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
@@ -490,7 +501,10 @@ bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 	if(sam_read1(fp_in, bamHdr, slots[used])>=0){
 		++used;
 		return true;
-	} else {return false;}
+	} else {
+		file_end=true;
+		return false;
+	}
 }
 
 bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al primo slot libero del vectorbox.
@@ -499,16 +513,27 @@ bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al prim
 
     bam1_t* dst = slots[used];
 
-    const int need = src->l_data;
+	if (src->l_data > dst->m_data) {
+    	bam1_t* new_dst = bam_dup1(src);
+	 	if (!new_dst)
+        throw std::bad_alloc();
+
+        bam_destroy1(dst);
+        slots[used] = new_dst;
+        dst = new_dst;
+    } else {
+        bam_copy1(dst, src);
+    }
+   /* const int need = src->l_data;
     if (need > 0) {
         const int target = std::max(need, hiwater_data);
         if (target > dst->m_data) {
             if (bam_resize1(dst, target) != 0)
                 throw std::bad_alloc();
         }
-    }
+    }*/
 
-    bam_copy1(dst, src);
+    //bam_copy1(dst, src);
     ++used;
 
     hiwater_data= std::max<int>(hiwater_data, dst->l_data);
@@ -528,16 +553,25 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
         bam1_t* b = bam_init1();
         if (!b) throw std::bad_alloc();
 
-        if (hiwater_data> 0) {
+		if (hiwater_data > 0) {
+   			b->data = (uint8_t*)malloc(hiwater_data);//guadagno reale?
+   	 		if (!b->data) {
+       			bam_destroy1(b);
+       			throw std::bad_alloc();
+   			}
+   			b->m_data = hiwater_data;
+    		b->l_data = 0;
+		}
+		slots.push_back(b);
+       /* if (hiwater_data> 0) {
             if (bam_resize1(b, hiwater_data) != 0) {
                 bam_destroy1(b);
                 throw std::bad_alloc();
             }
-        }
-
-        slots.push_back(b);
+        }*/
     }
 }
+
 /*int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &bridge_read, bool &bridge, std::vector<int> &group_counter, samFile *fp_in, bam_hdr_t *bamHdr){
 	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
 	std::string qname;

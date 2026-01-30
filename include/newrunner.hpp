@@ -83,13 +83,15 @@ public:
     Bam_record_vector& operator=(Bam_record_vector&& other) noexcept;
 
     // main API
-    bam1_t* push_copy(const bam1_t* src);
+    bam1_t* push_back(const bam1_t* src);
     const char* current_qname() const noexcept;
 
     // container-like helpers
     void clear() noexcept;
     std::size_t size() const noexcept;
     std::size_t capacity() const noexcept;
+	std::size_t get_size_wanted() const noexcept;
+	bool is_file_end() const noexcept;
 
 	bool add_record(samFile *fp_in,bam_hdr_t *bamHdr);
 
@@ -101,12 +103,13 @@ private:
 
     std::vector<bam1_t*> slots; //o meglio allocarla con new?
 	std::size_t size_wanted;
-    std::size_t used = 0; //il primom libero
+    std::size_t used = 0; //il primo libero
     int hiwater_data = 0;
+	bool file_end=false; 
 };
 
-class Runner : public Bam_record_vector {
-    
+class Runner {
+
     UserInputBam3D userInput;
 	ReadStats readStats;
 	PairStats pairStats;
@@ -125,7 +128,7 @@ public:
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
     void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
-	void processReads(bam_hdr_t*, std::vector<std::vector<bam1_t*>> &, int , std::vector<int>&);
+	void processReads(Bam_record_vector &);
 	void output();
 	void run();
     
