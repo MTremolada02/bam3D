@@ -364,6 +364,7 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 }
 
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
+	vectorbox.clear_index();
 	std::string qname;
 	std::string current_qname;
 	bool bridge=true;
@@ -373,22 +374,31 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 		if(bridge){
 			if(first){//:( come faccio
 				vectorbox.add_record(fp_in,bamHdr);
+				qname=bam_get_qname(vectorbox[i]);
 				first =false;
 			}else{
 				vectorbox.push_back(bridge_read);
+				qname=bam_get_qname(vectorbox[i]);
 			}
 			bridge=false;
 			continue;
 		}
 		vectorbox.add_record(fp_in,bamHdr);
+		current_qname=bam_get_qname(vectorbox[i]);
+		if(qname!=current_qname){
+			qname=current_qname;
+			vectorbox.index_push_back(vectorbox.size());
+		}
 	}
 
-	qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
+	qname=current_qname;
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
 			current_qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
 			if(!(current_qname==qname)){
-				break;}
+				vectorbox.index_push_back(vectorbox.size());
+				break;
+			}
 			vectorbox.push_back(bridge_read);
 		}else{break;}
 	}
@@ -463,7 +473,7 @@ Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
 	size_wanted=initial_capacity;
     for (std::size_t i = 0; i < initial_capacity; ++i){ 
         slots.push_back(bam_init1());
-		//index.push_back(0);
+		index.push_back(0);
 	}
 }
 
@@ -503,16 +513,16 @@ Bam_record_vector& Bam_record_vector::operator=(Bam_record_vector&& other) noexc
 }
 
 void Bam_record_vector::clear() noexcept { used=0;}
-
 std::size_t Bam_record_vector::size() const noexcept { return used; }
 std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
 std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wanted;}
 bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
 std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size();}
 std::size_t Bam_record_vector::get_index(std::size_t i) const noexcept { return index[i];}
-
+void Bam_record_vector::clear_index() const noexcept {index.clean();} 
 bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
 const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
+void Bam_record_vector::index_push_back(std::size_t i) const noexcept {index.push_back();}
 
 bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 	if(used==slots.size()){expand(slots.empty() ? 10 : slots.size() * 2);}
@@ -614,74 +624,3 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
         }*/
     }
 }
-
-/*int Runner::data_vector(std::vector<std::vector<bam1_t*>> &vectorbox, bam1_t* &bridge_read, bool &bridge, std::vector<int> &group_counter, samFile *fp_in, bam_hdr_t *bamHdr){
-	bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
-	std::string qname;
-	std::string current_qname;
-	long unsigned int j=0;//indice dei vettori di record interni a vectorbox:ultima posizione piena zero compreso (tipo di dato per vectorbox[i-1].size()<=j+1 che evidentemente è un long unsigned int)
-	int boxes_filled=0;
-	if(!bridge){bool first = true;}//fist reading
-vectorbox.clear();
-	if(!qname_sorted){
-		for (int i=0;i<10;++i){
-			if(sam_read1(fp_in, bamHdr, vectorbox.at(i).at(0)) <0){
-				return i;
-			}else{
-				boxes_filled=i+1;
-				group_counter[i]=1;//ultima posizione piena del vettore è la zeresima
-			}
-		}
-		return boxes_filled;
-	}else{
-		for(int i=0; i<11; ++i){ //ora vector box è nella posizione [i][0] piena del record i-esimo corrente (first e bridge a parte)
-
-			if (bridge){//primo record dopo ogni cambio di vettore (quindi i,j=1->[0][0])
-				bam_copy1(vectorbox.at(0).at(0),bridge_read);
-				qname = bam_get_qname(vectorbox.at(0).at(0));
-				group_counter.at(0)=1;
-			    boxes_filled=1;
-				bridge=false; 
-				continue;
-			}else{
-				if(sam_read1(fp_in, bamHdr, vectorbox.at(i).at(0)) <0){
-					return i+1;
-				}
-			}
-
-			if (first){ // per il primo in assoluto quindi [0][0] del primissimo thread di tutto il file
-				qname = bam_get_qname(vectorbox.at(i).at(0));
-				group_counter.at(0)=1;
-				boxes_filled=1;
-				first = false;
-				continue;
-			}
-				
-			current_qname=bam_get_qname(vectorbox.at(i).at(0));
-
-			if(strcmp(current_qname.c_str(), qname.c_str())==0){//devo salvarlo nella posizione i precedente ma j successiva al j attuale del sottovettore del vectorbox
-				if(vectorbox.at(i-1).size()<=j+1){//controllo se esiste già uno spazio da sovrascrivere nella pozione i-1
-					vectorbox.at(i-1).push_back(bam_init1());
-					bam_copy1(vectorbox.at(i-1).at(j+1), vectorbox.at(i).at(0));
-				}else {//lo spazio c'è già:saremo al secondo giro. potrei usare swap ma così uso puntatori, posso solo sovrascrivere
-					bam_copy1(vectorbox.at(i-1).at(j+1), vectorbox.at(i).at(0));
-				}
-				++j;//al secondo giro j vale 1
-				group_counter.at(i-1)=j+1;
-				--i;
-			} else {//quindi qname diverso
-				if(i==10){ //ultimo giro
-					bridge=true;
-					bam_copy1(bridge_read,vectorbox.at(10).at(0));
-				} else {
-					qname=bam_get_qname(vectorbox.at(i).at(0));
-					j=0; //primo record del nuovo gruppo con j=0
-					group_counter.at(i)=1;
-					boxes_filled=i+1;
-				}
-			}
-		}
-		return boxes_filled;
-	}
-} 
-*/

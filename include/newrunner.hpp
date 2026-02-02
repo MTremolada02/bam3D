@@ -12,9 +12,11 @@ struct UserInputBam3D : UserInput { // additional input
 	bool hist_none        =false;
 	bool hist_global      = false;
 	bool hist_by_chrom    = false;
+	bool single_read_stats = false;
+	bool pair_read_stats = false;
 
 	uint8_t decompression_threads = 4;
-	uint8_t histogram_mode = hist_none; // histogram mode
+	//uint8_t histogram_mode = hist_none;
 
 };
 
@@ -92,6 +94,8 @@ public:
     std::size_t capacity() const noexcept;
 	std::size_t get_size_wanted() const noexcept;
 	std::size_t get_n_group() const noexcept;
+	void clear_index() const noexcept;//!!!!!!!!!!!!!!!!
+	void index_push_back(std::size_t i) const noexcept;//!!!!!!!!!!
 	std::size_t get_index(std::size_t i) const noexcept;
 	bool is_file_end() const noexcept;
 
