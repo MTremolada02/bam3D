@@ -38,107 +38,119 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 	return bases;
 }
 
-void Runner::qname_stats(std::vector<bam1_t*> &group, int group_size){
-	std::vector <bam1_t*> r1_side, r2_side;
-	std::vector <bam1_t*> *chim = nullptr;
-	std::vector <bam1_t*> *other= nullptr; //potrebbe essere solo un bam e non un vettore di bam? tanto è solo uno !!!!!!!!!!!!!!!
-	bool rescued =false;
-	bool R1=false;
-	bool R2=false;
+void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo!
+	std::size_t j=0;//nuermo read
+	std::size_t tmpj=0;
 
-	bool cis=false;
-	bool facing=false;
-	bool distance=false;
+	for(std::size_t i=0; i<group.get_n_group(); ++i){
+		std::size_t group_end = group.get_index(i);//es i=3 significa chr index[3]=numero del read in cui cambia qname
 
-	uint8_t mapped_count1=0;
-	uint8_t mapped_count2=0;
-	Maptype a=qnameStats.type1=Maptype::N;
-	Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
+
+		std::vector <bam1_t*> r1_side, r2_side;
+		std::vector <bam1_t*> *chim = nullptr;
+		std::vector <bam1_t*> *other= nullptr; //potrebbe essere solo un bam e non un vettore di bam? tanto è solo uno !!!!!!!!!!!!!!!
+		bool rescued =false;
+		bool R1=false;
+		bool R2=false;
+
+		bool cis=false;
+		bool facing=false;
+		bool distance=false;
+
+		uint8_t mapped_count1=0;
+		uint8_t mapped_count2=0;
+		Maptype a=qnameStats.type1=Maptype::N;
+		Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
 //////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
-	for(int i=0; i<group_size; ++i){
-		if (group.at(i)->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
-    	if (group.at(i)->core.flag & BAM_FUNMAP) continue;
 
-    	if (group.at(i)->core.flag & BAM_FREAD1) r1_side.push_back(group.at(i));
-    	if (group.at(i)->core.flag & BAM_FREAD2) r2_side.push_back(group.at(i));
-	}
+		tmpj=j;
+		for(j;j<group_end; ++j){//scorrerà tutte le read fion a used
+			if (group[j]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
+    		if (group[j]->core.flag & BAM_FUNMAP) continue;
 
-	if(r1_side.size()>=2 || r2_side.size()>=2){
-		if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
-	if	(r1_side.size() == 2) {
-				chim = &r1_side;
-				other = &r2_side;
-				R1=true;
-			}else if (r2_side.size() == 2){
-				chim = &r2_side;
-				other = &r1_side;
-				R2=true;
+    		if (group[j]->core.flag & BAM_FREAD1) r1_side.push_back(group[j]);
+    		if (group[j]->core.flag & BAM_FREAD2) r2_side.push_back(group[j]);
+		}
+
+		if(r1_side.size()>=2 || r2_side.size()>=2){
+			if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
+				if	(r1_side.size() == 2) {
+					chim = &r1_side;
+					other = &r2_side;
+					R1=true;
+				}else if (r2_side.size() == 2){
+					chim = &r2_side;
+					other = &r1_side;
+					R2=true;
+				}
+			} else {
+				++qnameStats.WW;//return;
+				continue; 
 			}
-		} else {
-		++qnameStats.WW;
-		return;
-		}
 
-		if (Alignstarts((*chim).at(0)) > Alignstarts((*chim).at(1))) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
-			std::swap((*chim).at(0), (*chim).at(1));///////non tanto chiaro
-		}//ora chim[0] è l'outer, [1]è l'inner e l'altro è automaticamente l'other
-		bool rev_i = (*chim).at(1)->core.flag & BAM_FREVERSE;
-		bool rev_o = (*other).at(0)->core.flag & BAM_FREVERSE;
-		//controlli 
-		if(((*chim).at(1))->core.tid==((*other).at(0))->core.tid) {cis=true;} 
-		if((!rev_i &&  rev_o && (*chim).at(1)->core.pos <= (*other).at(0)->core.pos) || ( rev_i && !rev_o && (*other).at(0)->core.pos <= (*chim).at(1)->core.pos)) {facing=true;}
-		if(llabs((*chim).at(1)->core.pos - (*other).at(0)->core.pos) <= 2000) {distance=true;}////di default 2000 pb
+			if (Alignstarts((*chim).at(0)) > Alignstarts((*chim).at(1))) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
+				std::swap((*chim).at(0), (*chim).at(1));///////non tanto chiaro
+			}//ora chim[0] è l'outer, [1]è l'inner e l'altro è automaticamente l'other
+			bool rev_i = (*chim).at(1)->core.flag & BAM_FREVERSE;
+			bool rev_o = (*other).at(0)->core.flag & BAM_FREVERSE;
+			//controlli 
+			if(((*chim).at(1))->core.tid==((*other).at(0))->core.tid) {cis=true;} 
+			if((!rev_i &&  rev_o && (*chim).at(1)->core.pos <= (*other).at(0)->core.pos) || ( rev_i && !rev_o && (*other).at(0)->core.pos <= (*chim).at(1)->core.pos)) {facing=true;}
+			if(llabs((*chim).at(1)->core.pos - (*other).at(0)->core.pos) <= 2000) {distance=true;}////di default 2000 pb
 
-		if(cis && facing && distance) {
-			rescued=true;
-		}else{
-			++qnameStats.WW; 
-			return;  
+			if(cis && facing && distance) {
+				rescued=true;
+			}else{
+				++qnameStats.WW; 
+				continue;  //rerturn;
+			}
 		}
-	}
 
 //////pair stats
-	for(int i=0; i<group_size; ++i){
-		if(group.at(i)->core.flag & BAM_FUNMAP) {continue;}
-		if(group.at(i)->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
-		if(!(group.at(i)->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
+		j=tmpj;//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
+		for(j;j<group_end; ++j){
+			if(group[j]->core.flag & BAM_FUNMAP) {continue;}
+			if(group[j]->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
+			if(!(group[j]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
 
-		if(!(group.at(i)->core.flag & BAM_FSECONDARY) && group.at(i)->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
-			++qnameStats.DD;
-			return;
+			if(!(group[j]->core.flag & BAM_FSECONDARY) && group[j]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
+				++qnameStats.DD;
+				continue;//return;
+			}
+			if(group[j]->core.flag & BAM_FREAD1) {
+				if(group[j]->core.flag & BAM_FSECONDARY) {mapped_count1++;
+				}else{mapped_count1++;} //dovrebbe essere il primary
+			}
+			if(group[j]->core.flag & BAM_FREAD1) {++mapped_count1;}
+			if(group[j]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
 		}
-		if(group.at(i)->core.flag & BAM_FREAD1) {
-			if(group.at(i)->core.flag & BAM_FSECONDARY) {mapped_count1++;}
-			else{mapped_count1++;} //dovrebbe essere il primary
-		}
-		if(group.at(i)->core.flag & BAM_FREAD1) {++mapped_count1;}
-		if(group.at(i)->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
+
+		a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
+		b=(mapped_count2==0 ? Maptype::N :(mapped_count2==1 ? Maptype::U : Maptype::M));
+
+		if(rescued && R1) {a=Maptype::R;}
+		if(rescued && R2) {b=Maptype::R;}
+
+		if(a==Maptype::U && b==Maptype::R) {
+			++qnameStats.UR;
+			continue;//return;
+		} //unico di cui importa l'ordine
+
+		if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
+
+		if(a==Maptype::U && b==Maptype::U) ++qnameStats.UU;
+		if(a==Maptype::M && b==Maptype::M) ++qnameStats.MM;
+		if(a==Maptype::N && b==Maptype::N) ++qnameStats.NN;
+
+		if(a==Maptype::M && b==Maptype::U) ++qnameStats.MU;
+		if(a==Maptype::U && b==Maptype::N) ++qnameStats.NU;
+		if(a==Maptype::M && b==Maptype::N) ++qnameStats.NM;
+
+		if(a==Maptype::R && b==Maptype::U) ++qnameStats.RU;
+		if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
+		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
+		
 	}
-
-	a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
-	b=(mapped_count2==0 ? Maptype::N :(mapped_count2==1 ? Maptype::U : Maptype::M));
-
-	if(rescued && R1) {a=Maptype::R;}
-	if(rescued && R2) {b=Maptype::R;}
-
-	if(a==Maptype::U && b==Maptype::R) {
-		++qnameStats.UR;
-		return;
-	} //unico di cui importa l'ordine
-
-	if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
-
-	if(a==Maptype::U && b==Maptype::U) ++qnameStats.UU;
-	if(a==Maptype::M && b==Maptype::M) ++qnameStats.MM;
-	if(a==Maptype::N && b==Maptype::N) ++qnameStats.NN;
-
-	if(a==Maptype::M && b==Maptype::U) ++qnameStats.MU;
-	if(a==Maptype::U && b==Maptype::N) ++qnameStats.NU;
-	if(a==Maptype::M && b==Maptype::N) ++qnameStats.NM;
-
-	if(a==Maptype::R && b==Maptype::U) ++qnameStats.RU;
-	if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
-	if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
 }
 	
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
@@ -352,14 +364,12 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 }
 
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
-	std::cout<<"dentro al data vector"<<std::endl;
 	std::string qname;
 	std::string current_qname;
 	bool bridge=true;
 	vectorbox.clear();
 
 	for (int i=0;i<vectorbox.get_size_wanted();++i){
-std::cout<<i<<std::endl;
 		if(bridge){
 			if(first){//:( come faccio
 				vectorbox.add_record(fp_in,bamHdr);
@@ -376,7 +386,7 @@ std::cout<<i<<std::endl;
 	qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
-			current_qname=vectorbox.current_qname();
+			current_qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
 			if(!(current_qname==qname)){
 				break;}
 			vectorbox.push_back(bridge_read);
@@ -416,17 +426,17 @@ void Runner::run() {
 
 		while(!(records_vector.is_file_end())){ 
 			//caricare le box////////////////////////////////////////////////////
-			if(qname_sorted){ //fillare la classe per un file sortato
+			if(qname_sorted){ //fillare la classe in base a cioò che viene passato da terminale (errore se vuole pairtools nel caso unsorted)
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
-			}else{//fillarla nel caso nonsortato
-				data_vector(records_vector,fp_in,bamHdr);
-			}
+				//if vuole anche samtools
+				processReads(records_vector);
+				records_vector.qname_index();//1 CASO funzione esterna
+				qname_stats(records_vector);
 
-			processReads(records_vector);
-		 //statistiche tipo samtools
-			//qgroupStats(records_vector);
-			//std::cout<<"dopo i process read"<<std::endl;
-			//++f;
+			}else{//samtools
+				data_vector(records_vector,fp_in,bamHdr);
+				processReads(records_vector);
+			}
 		}
 
 		output();
@@ -443,12 +453,15 @@ void Runner::run() {
 //////////////////////////////////////////////////////////////////////////////////////////class functions definition
 
 Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
-    : used(0), hiwater_data(0), size_wanted(0), file_end(false)
+    : used(0), hiwater_data(0), size_wanted(0), file_end(false)//, n_group(0)
 {
     slots.reserve(initial_capacity);
+	index.reserve(initial_capacity);//grosso ma sensato nel senso che l'unico caso patologico da considerare è quello di 10k reads con diverso qname
 	size_wanted=initial_capacity;
-    for (std::size_t i = 0; i < initial_capacity; ++i)
+    for (std::size_t i = 0; i < initial_capacity; ++i){ 
         slots.push_back(bam_init1());
+		index.push_back(0);
+	}
 }
 
 Bam_record_vector::~Bam_record_vector() {
@@ -492,6 +505,8 @@ std::size_t Bam_record_vector::size() const noexcept { return used; }
 std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
 std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wanted;}
 bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
+std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size();}
+std::size_t Bam_record_vector::get_index(std::size_t i) const noexcept { return index[i];}
 
 bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
 const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
@@ -505,6 +520,31 @@ bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 		file_end=true;
 		return false;
 	}
+}
+
+void Bam_record_vector::qname_index(){//indice vero, nel vettore sono èresenti read di inizio e fine gruppo->[5,13,...,used]
+	/*if(used>index.size()){
+		for(std::size_t i=index.size(); i<used;++i){
+			index.push_back(0);
+		}//ho già fatto reserve() forse non ha senso che li pre allochi essendo solo numeri (nel caso togliere il clear) e riaggiungere n_group
+	}*/	
+	//n_group=0;
+	index.clear();
+	//int j=0;
+	std::string current_qname;
+	std::string qname=bam_get_qname(slots[0]);
+	for (std::size_t i=1; i<used;++i){//segno quando cambia
+		current_qname=bam_get_qname(slots[i]);
+		if(qname!=current_qname){
+			qname=bam_get_qname(slots[i]);//dice meglui confrontare char*??
+			index.push_back(i);//index[i] la prima diversa (va già bene per un for)
+			//index[j]=i;
+			//++j;
+		}
+
+	}
+	index.push_back(used);
+//	n_group=j;
 }
 
 bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al primo slot libero del vectorbox.
