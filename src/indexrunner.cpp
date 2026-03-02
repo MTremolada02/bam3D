@@ -17,7 +17,7 @@
 
 #include "functions.h"
 #include "global.h"
-#include "newrunner.hpp"
+#include "noindexrunner.hpp"
 
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
@@ -38,106 +38,65 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 	return bases;
 }
 
-void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo! ora vedremo
-	std::size_t begin=0;//fist_read
-	std::size_t end=0;
-	std::string qname;
+void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo!
+	std::size_t j=0;//nuermo read
+	std::size_t tmpj=0;
 
-	std::vector <int> r1_side;
-	r1_side.reserve(5);//inventato
-	std::vector <int> r2_side;
-	r2_side.reserve(5);
+	for(std::size_t i=0; i<group.get_n_group(); ++i){
+		std::size_t group_end = group.get_index(i);//es i=3 significa chr index[3]=numero del read in cui cambia qname
 
-	uint8_t inner=0;
-	uint8_t outer=0;
-	uint8_t other=0;
 
-	bool rescued=false;
-	bool R1_chim=false;
-	bool R2_chim=false;
+		std::vector <bam1_t*> r1_side, r2_side;
+		std::vector <bam1_t*> *chim = nullptr;
+		std::vector <bam1_t*> *other= nullptr; //potrebbe essere solo un bam e non un vettore di bam? tanto è solo uno !!!!!!!!!!!!!!!
+		bool rescued =false;
+		bool R1=false;
+		bool R2=false;
 
-	bool cis=false;
-	bool facing=false;
-	bool distance=false;
+		bool cis=false;
+		bool facing=false;
+		bool distance=false;
 
-	uint8_t mapped_count1=0;
-	uint8_t mapped_count2=0;
-
-	Maptype a=qnameStats.type1=Maptype::N;;
-	Maptype b=qnameStats.type2=Maptype::N;;
-
-	while(begin<group.size()){ 
-		qname=bam_get_qname(group[begin]);
-		end=begin+1;
-		
-    	while(end < group.size() && bam_get_qname(group[end])==qname){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
-
-		r1_side.clear();
-		r2_side.clear();
-
-	    inner;
-	    outer;
-	    other;
-
-		rescued=false;
-		R1_chim=false;
-		R2_chim=false;
-
-		cis=false;
-		facing=false;
-		distance=false;
-
-		mapped_count1=0;
-		mapped_count2=0;
-
-		a=qnameStats.type1=Maptype::N;
-		b=qnameStats.type2=Maptype::N;
-
+		uint8_t mapped_count1=0;
+		uint8_t mapped_count2=0;
+		Maptype a=qnameStats.type1=Maptype::N;
+		Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
 //////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
-		for(std::size_t j=begin; j<end; ++j){
+
+		tmpj=j;
+		for(j;j<group_end; ++j){//scorrerà tutte le read fion a used
 			if (group[j]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
     		if (group[j]->core.flag & BAM_FUNMAP) continue;
 
-    		if (group[j]->core.flag & BAM_FREAD1) {
-				r1_side.push_back(j);//unico dai
-			}
-			
-    		if (group[j]->core.flag & BAM_FREAD2) {
-				r2_side.push_back(j);
-			}
+    		if (group[j]->core.flag & BAM_FREAD1) r1_side.push_back(group[j]);
+    		if (group[j]->core.flag & BAM_FREAD2) r2_side.push_back(group[j]);
 		}
 
 		if(r1_side.size()>=2 || r2_side.size()>=2){
 			if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
 				if	(r1_side.size() == 2) {
-					inner = r1_side.at(0);
-					outer = r1_side.at(1);
-					other = r2_side.at(0);
-					R1_chim=true;
-
+					chim = &r1_side;
+					other = &r2_side;
+					R1=true;
 				}else if (r2_side.size() == 2){
-					inner = r2_side.at(0);
-					outer = r2_side.at(1);
-					other = r1_side.at(0);
-					R2_chim=true;
+					chim = &r2_side;
+					other = &r1_side;
+					R2=true;
 				}
 			} else {
 				++qnameStats.WW;//return;
 				continue; 
 			}
 
-			auto start_i = Alignstarts(group[inner]);
-			auto start_ou = Alignstarts(group[outer]);
-
-			if (start_i > start_ou){std::swap(inner, outer);}//se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
-//RIGUARDARE SENSO BIOLOGICO
-
-			bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
-			bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
+			if (Alignstarts((*chim).at(0)) > Alignstarts((*chim).at(1))) { //se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
+				std::swap((*chim).at(0), (*chim).at(1));///////non tanto chiaro
+			}//ora chim[0] è l'outer, [1]è l'inner e l'altro è automaticamente l'other
+			bool rev_i = (*chim).at(1)->core.flag & BAM_FREVERSE;
+			bool rev_o = (*other).at(0)->core.flag & BAM_FREVERSE;
 			//controlli 
-			if((group[inner])->core.tid==(group[other])->core.tid) {cis=true;} 
-			if((!rev_i &&  rev_ot && group[inner]->core.pos <= group[other]->core.pos) || ( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos)) {facing=true;}
-			if(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000) {distance=true;}////di default 2000 pb
+			if(((*chim).at(1))->core.tid==((*other).at(0))->core.tid) {cis=true;} 
+			if((!rev_i &&  rev_o && (*chim).at(1)->core.pos <= (*other).at(0)->core.pos) || ( rev_i && !rev_o && (*other).at(0)->core.pos <= (*chim).at(1)->core.pos)) {facing=true;}
+			if(llabs((*chim).at(1)->core.pos - (*other).at(0)->core.pos) <= 2000) {distance=true;}////di default 2000 pb
 
 			if(cis && facing && distance) {
 				rescued=true;
@@ -148,29 +107,29 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		}
 
 //////pair stats
-		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
-		for(std::size_t i=begin; i<end; ++i){
-			if(group[i]->core.flag & BAM_FUNMAP) {continue;}
-			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
-			if(!(group[i]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppia è inutile fare la statistica
+		j=tmpj;//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
+		for(j;j<group_end; ++j){
+			if(group[j]->core.flag & BAM_FUNMAP) {continue;}
+			if(group[j]->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
+			if(!(group[j]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
 
-			if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
+			if(!(group[j]->core.flag & BAM_FSECONDARY) && group[j]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
 				++qnameStats.DD;
 				continue;//return;
 			}
-			if(group[i]->core.flag & BAM_FREAD1) {
-				if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;
+			if(group[j]->core.flag & BAM_FREAD1) {
+				if(group[j]->core.flag & BAM_FSECONDARY) {mapped_count1++;
 				}else{mapped_count1++;} //dovrebbe essere il primary
 			}
-			//if(group[tmp]->core.flag & BAM_FREAD1) {++mapped_count1;}
-			if(group[i]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary della R2
+			if(group[j]->core.flag & BAM_FREAD1) {++mapped_count1;}
+			if(group[j]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
 		}
 
 		a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
 		b=(mapped_count2==0 ? Maptype::N :(mapped_count2==1 ? Maptype::U : Maptype::M));
 
-		if(rescued && R1_chim) {a=Maptype::R;}
-		if(rescued && R2_chim) {b=Maptype::R;}
+		if(rescued && R1) {a=Maptype::R;}
+		if(rescued && R2) {b=Maptype::R;}
 
 		if(a==Maptype::U && b==Maptype::R) {
 			++qnameStats.UR;
@@ -190,8 +149,6 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		if(a==Maptype::R && b==Maptype::U) ++qnameStats.RU;
 		if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
 		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
-
-		begin=end;
 		
 	}
 }
@@ -213,14 +170,14 @@ double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
 }
 
 void Runner::histo_global_distance (std::unordered_map<uint64_t,uint64_t>& global_dist_count){
+
 	std::fstream myfile;
-	myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti) 
+	myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
 
 	if(!myfile.is_open()){
 		std::cout<<"pair_by_global_distance not open"<<std::endl;
 		return;
 	}
-
 	myfile << "distance" << "\t" << "count" << "\n";
 	for (auto i = global_dist_count.begin(); i != global_dist_count.end(); ++i) {
 		myfile << i->first << "\t" << i->second<< "\n";
@@ -298,105 +255,104 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 	
 
 void Runner::processReads(Bam_record_vector &vectorbox) {
-	if(userInput.single_read_stats || userInput.hist_global || userInput.hist_by_chrom){
-		uint64_t av_counter=0;
-		
-		uint64_t mismatched_bases=0;
-		uint64_t total_base=0;
+	uint64_t av_counter=0;
+	
+	uint64_t mismatched_bases=0;
+	uint64_t total_base=0;
 
-		uint32_t chrom=0;
-		uint64_t dist=0;
+	std::unordered_map <uint64_t,uint64_t> global_dist_count; //per ora la tengo così
+	std::map <uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
+	uint32_t chrom=0;
+	uint64_t dist=0;
+	
+	for(int i=0;i<vectorbox.size();++i){
+			pairStats.good_read1=false;
+			pairStats.good_read2=false;
+			++readStats.readN;
+			////FLAG STATS;		
+			if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+			flag_inspector(vectorbox[i]);
 
-		if(userInput.single_read_stats){ 
-			for(int i=0;i<vectorbox.size();++i){
-					pairStats.good_read1=false;
-					pairStats.good_read2=false;
-					++readStats.readN;
-					////FLAG STATS;		
-					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
-					flag_inspector(vectorbox[i]);
- 
-					if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
-						++pairStats.sameCr;
+			if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
+				++pairStats.sameCr;
 
-						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
-							++av_counter;			
-							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i]);   
-							//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
-							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i]);
+				if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
+					++av_counter;			
+					readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i]);   
+					//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
+ 					readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i]);
 
-						}
-						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
-							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
-							++global_dist_count[dist]; 
-						}
-					
-						if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
-							chrom=vectorbox[i]->core.tid;
-							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
-							++chrom_dist_count[chrom][dist];
-						}
-					}
-
-					if (pairStats.good_read1 || pairStats.good_read2) { 
-						uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
-						uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
-
-						mismatched_bases += nm;  
-						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
-						total_base += aligned;
-					} 
+				}
+				if(userInput.hist_global){ //HISTO_GLOBAL_DATA
+					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
+					++global_dist_count[dist]; 
+				}
+			
+				if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
+					chrom=vectorbox[i]->core.tid;
+					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
+					++chrom_dist_count[chrom][dist];
+				}
 			}
 
-			if ((readStats.readN % 2) == 0) {
-				pairStats.pairN=readStats.readN/2;
-			} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
-			readStats.error_rate=error_rate(mismatched_bases,total_base);
-		}
+			if (pairStats.good_read1 || pairStats.good_read2) { 
+				uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
+    			uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
+
+    			mismatched_bases += nm;  
+    			uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
+    			total_base += aligned;
+			} 
 	}
-	if(userInput.pair_read_stats){ 
-		qname_stats(vectorbox);
-	}
+
+	if(userInput.hist_global){histo_global_distance(global_dist_count);}
+	if (userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
+
+	if ((readStats.readN % 2) == 0) {
+		pairStats.pairN=readStats.readN/2;
+	} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
+	readStats.error_rate=error_rate(mismatched_bases,total_base);
 }
 
 
 void Runner::output(){
+	std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
+	std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
+	std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
+	std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;       
+	std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
+	std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
+	std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
+	std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+	std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
+	std::cout<<"Read1:"<<pairStats.read1<<std::endl; 
+	std::cout<<"Read2:"<<pairStats.read2<<std::endl;
+	std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;
+	std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+	std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
+	std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
+	std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+	std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
+	std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
+	std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
+	std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
+	std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
 	
-		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
-		std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
-		std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
-		std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;       
-		std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
-		std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
-		std::cout<<"Read1:"<<pairStats.read1<<std::endl; 
-		std::cout<<"Read2:"<<pairStats.read2<<std::endl;
-		std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
-		std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
-		std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
-		std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
-		std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
-		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
-		std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
-		std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
-		std::cout<<"Reads_mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
-		std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
-		std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
-		std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
-		std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
-		std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
-		
-		std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
-		std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
+	std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+	std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
+	std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
+	std::cout<<"Reads_mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
+	std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
+	std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+	std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
+	std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
+	std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
+    std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
+ 	std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
+    std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
+    std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
+	
+
 }
  
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
@@ -408,6 +364,7 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 }
 
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
+	vectorbox.clear_index();
 	std::string qname;
 	std::string current_qname;
 	bool bridge=true;
@@ -417,45 +374,49 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 		if(bridge){
 			if(first){//:( come faccio
 				vectorbox.add_record(fp_in,bamHdr);
+				qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
 				first =false;
 			}else{
 				vectorbox.push_back(bridge_read);
+				qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
 			}
 			bridge=false;
 			continue;
 		}
 		vectorbox.add_record(fp_in,bamHdr);
+		current_qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
+		if(qname!=current_qname){
+			qname=current_qname;
+			vectorbox.index_push_back(vectorbox.size());
+		}
 	}
 
-	qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
+	qname=current_qname;
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
 			current_qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
 			if(!(current_qname==qname)){
-				break;}
+				vectorbox.index_push_back(vectorbox.size());
+				break;
+			}
 			vectorbox.push_back(bridge_read);
 		}else{break;}
 	}
 }
 
-
-
 void Runner::run() {
-
+	//std::cout<<"dai che fai"<<std::endl;
 	std::size_t numFiles = userInput.inFiles.size();
 	lg.verbose("Processing " + std::to_string(numFiles) + " files");
 	
 	for (uint32_t i = 0; i < numFiles; ++i) {
 
-		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
-		chrom_dist_count.clear();
-
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
 		
-		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"r"); 
+		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"r"); //open bam file!!!!!!!!!!!!!!!!!!!!!!!
 		if (!fp_in) {std::cout<<"hts_open has failed"<<std::endl;}
-		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); 
+		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); //read header
 		if (!bamHdr) {std::cout<<"sam_hdr_read has failed"<<std::endl;}
 		
 		htsThreadPool tpool_read = {NULL, 0};
@@ -464,36 +425,31 @@ void Runner::run() {
 		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
 
 		bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
-		if (!userInput.single_read_stats && !userInput.pair_read_stats) {//default
-			userInput.single_read_stats = true;
-    		if (qname_sorted) {
-        	userInput.pair_read_stats = true;
-    		} else { std::cout<<"Warning: input BAM file is not qname sorted, pair read statistics will not be computed."<<std::endl;}
-		}
 		if(userInput.pair_read_stats && !qname_sorted){
-			userInput.pair_read_stats=false;
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
 		std::size_t j=10;//set real capacity
 		bool first=true;
 
+		//std::cout<<"prima di creare il record_vector"<<std::endl;
 		Bam_record_vector records_vector(j); 
 		bam1_t *bridge_read=bam_init1();
+		//std::cout<<"dopo aver creato il record_vector"<<std::endl;
 
 		while(!(records_vector.is_file_end())){ 
-			if(userInput.pair_read_stats){ 
+			//caricare le box////////////////////////////////////////////////////aggiunngere tutte le possibilità del caso (non so se fare mille if abbia senso o è meglio michiesare meglio gli imput con dei booleani)
+			if(userInput.pair_read_stats){ //fillare la classe in base a cioò che viene passato da terminale (errore se vuole pairtools nel caso unsorted)
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
-			}else if(userInput.single_read_stats){
+				//if vuole anche samtools
+				processReads(records_vector);
+				qname_stats(records_vector);
+
+			}else if(userInput.single_read_stats){//samtools
 				data_vector(records_vector,fp_in,bamHdr);
+				processReads(records_vector);
 			}
-			processReads(records_vector);
 		}
-
-		if(userInput.hist_global){histo_global_distance(global_dist_count);}
-
-		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
-    		
 
 		output();
 		
@@ -509,12 +465,14 @@ void Runner::run() {
 //////////////////////////////////////////////////////////////////////////////////////////class functions definition
 
 Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
-    : used(0), hiwater_data(0), size_wanted(0), file_end(false)
+    : used(0), hiwater_data(0), size_wanted(0), file_end(false)//, n_group(0)
 {
     slots.reserve(initial_capacity);
+	index.reserve(initial_capacity);//grosso ma sensato nel senso che l'unico caso patologico da considerare è quello di 10k reads con diverso qname
 	size_wanted=initial_capacity;
     for (std::size_t i = 0; i < initial_capacity; ++i){ 
         slots.push_back(bam_init1());
+		index.push_back(0);
 	}
 }
 
@@ -558,9 +516,12 @@ std::size_t Bam_record_vector::size() const noexcept { return used; }
 std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
 std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wanted;}
 bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
-
+std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size();}
+std::size_t Bam_record_vector::get_index(std::size_t i) const noexcept { return index[i];}
+void Bam_record_vector::clear_index() noexcept {index.clear();} 
 bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
 const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
+void Bam_record_vector::index_push_back(std::size_t i) noexcept {index.push_back(i);}
 
 bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 	if(used==slots.size()){expand(slots.empty() ? 10 : slots.size() * 2);}
@@ -571,6 +532,31 @@ bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 		file_end=true;
 		return false;
 	}
+}
+
+void Bam_record_vector::qname_index(){//indice vero, nel vettore sono èresenti read di inizio e fine gruppo->[5,13,...,used]
+	/*if(used>index.size()){
+		for(std::size_t i=index.size(); i<used;++i){
+			index.push_back(0);
+		}//ho già fatto reserve() forse non ha senso che li pre allochi essendo solo numeri (nel caso togliere il clear) e riaggiungere n_group
+	}*/	
+	//n_group=0;
+	index.clear();
+	//int j=0;
+	std::string current_qname;
+	std::string qname=bam_get_qname(slots[0]);
+	for (std::size_t i=1; i<used;++i){//segno quando cambia
+		current_qname=bam_get_qname(slots[i]);
+		if(qname!=current_qname){
+			qname=bam_get_qname(slots[i]);//dice meglui confrontare char*??
+			index.push_back(i);//index[i] la prima diversa (va già bene per un for)
+			//index[j]=i;
+			//++j;
+		}
+
+	}
+	index.push_back(used);
+//	n_group=j;
 }
 
 bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al primo slot libero del vectorbox.
@@ -590,11 +576,26 @@ bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al prim
     } else {
         bam_copy1(dst, src);
     }
+   /* const int need = src->l_data;
+    if (need > 0) {
+        const int target = std::max(need, hiwater_data);
+        if (target > dst->m_data) {
+            if (bam_resize1(dst, target) != 0)
+                throw std::bad_alloc();
+        }
+    }*/
+
+    //bam_copy1(dst, src);
     ++used;
 
     hiwater_data= std::max<int>(hiwater_data, dst->l_data);
 
 	return dst;
+}
+
+const char* Bam_record_vector::current_qname() const noexcept {
+    if (used==0) return nullptr;
+    return bam_get_qname(slots[used- 1]);
 }
 
 void Bam_record_vector::expand(std::size_t new_capacity) {
@@ -605,7 +606,7 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
         if (!b) throw std::bad_alloc();
 
 		if (hiwater_data > 0) {
-   			b->data = (uint8_t*)malloc(hiwater_data);
+   			b->data = (uint8_t*)malloc(hiwater_data);//guadagno reale?
    	 		if (!b->data) {
        			bam_destroy1(b);
        			throw std::bad_alloc();
@@ -614,5 +615,11 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
     		b->l_data = 0;
 		}
 		slots.push_back(b);
+       /* if (hiwater_data> 0) {
+            if (bam_resize1(b, hiwater_data) != 0) {
+                bam_destroy1(b);
+                throw std::bad_alloc();
+            }
+        }*/
     }
 }
