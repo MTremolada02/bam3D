@@ -14,6 +14,7 @@
 #include "threadpool.h"
 
 #include <newrunner.hpp>
+//#include <noindexrunner.hpp>
 #include <main.hpp>
 
 std::string version = "0.0.1";

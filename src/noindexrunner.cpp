@@ -17,7 +17,7 @@
 
 #include "functions.h"
 #include "global.h"
-#include "newrunner.hpp"
+#include "noindexrunner.hpp"
 
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
@@ -374,17 +374,17 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 		if(bridge){
 			if(first){//:( come faccio
 				vectorbox.add_record(fp_in,bamHdr);
-				qname=bam_get_qname(vectorbox[i]);
+				qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
 				first =false;
 			}else{
 				vectorbox.push_back(bridge_read);
-				qname=bam_get_qname(vectorbox[i]);
+				qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
 			}
 			bridge=false;
 			continue;
 		}
 		vectorbox.add_record(fp_in,bamHdr);
-		current_qname=bam_get_qname(vectorbox[i]);
+		current_qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
 		if(qname!=current_qname){
 			qname=current_qname;
 			vectorbox.index_push_back(vectorbox.size());
@@ -429,7 +429,7 @@ void Runner::run() {
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
-		std::size_t j=10;//set real capacity
+		std::size_t j=10000;//set real capacity
 		bool first=true;
 
 		//std::cout<<"prima di creare il record_vector"<<std::endl;
@@ -441,9 +441,7 @@ void Runner::run() {
 			//caricare le box////////////////////////////////////////////////////aggiunngere tutte le possibilità del caso (non so se fare mille if abbia senso o è meglio michiesare meglio gli imput con dei booleani)
 			if(userInput.pair_read_stats){ //fillare la classe in base a cioò che viene passato da terminale (errore se vuole pairtools nel caso unsorted)
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
-				//if vuole anche samtools
 				processReads(records_vector);
-				records_vector.qname_index();//1 CASO funzione esterna
 				qname_stats(records_vector);
 
 			}else if(userInput.single_read_stats){//samtools
@@ -519,10 +517,10 @@ std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wan
 bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
 std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size();}
 std::size_t Bam_record_vector::get_index(std::size_t i) const noexcept { return index[i];}
-void Bam_record_vector::clear_index() const noexcept {index.clean();} 
+void Bam_record_vector::clear_index()  noexcept {index.clear();} 
 bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
 const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
-void Bam_record_vector::index_push_back(std::size_t i) const noexcept {index.push_back();}
+void Bam_record_vector::index_push_back(std::size_t i) noexcept {index.push_back(i);}
 
 bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 	if(used==slots.size()){expand(slots.empty() ? 10 : slots.size() * 2);}
