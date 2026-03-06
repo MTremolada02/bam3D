@@ -43,14 +43,14 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 	std::size_t end=0;
 	std::string qname;
 
-	std::vector <int> r1_side;
+	std::vector <std::size_t> r1_side;
 	r1_side.reserve(5);//inventato
-	std::vector <int> r2_side;
+	std::vector <std::size_t> r2_side;
 	r2_side.reserve(5);
 
-	uint8_t inner=0;
-	uint8_t outer=0;
-	uint8_t other=0;
+	std::size_t  inner=0;
+	std::size_t outer=0;
+	std::size_t  other=0;
 
 	bool rescued=false;
 	bool R1_chim=false;
@@ -60,8 +60,8 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 	bool facing=false;
 	bool distance=false;
 
-	uint8_t mapped_count1=0;
-	uint8_t mapped_count2=0;
+	std::size_t mapped_count1=0;
+	std::size_t mapped_count2=0;
 
 	Maptype a=qnameStats.type1=Maptype::N;;
 	Maptype b=qnameStats.type2=Maptype::N;;
@@ -71,13 +71,18 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		end=begin+1;
 		
     	while(end < group.size() && bam_get_qname(group[end])==qname){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
+std::cout<<"primo while"<<std::endl;
+std::cout<<"begin:"<<begin<<std::endl;
+std::cout<<"end:"<<end<<std::endl;
+
+
 
 		r1_side.clear();
 		r2_side.clear();
 
-	    inner;
-	    outer;
-	    other;
+	    inner=0;
+	    outer=0;
+	    other=0;
 
 		rescued=false;
 		R1_chim=false;
@@ -122,7 +127,10 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 					R2_chim=true;
 				}
 			} else {
-				++qnameStats.WW;//return;
+				++qnameStats.WW;
+				begin=end;
+std::cout<<"WW"<<std::endl;
+
 				continue; 
 			}
 
@@ -142,20 +150,33 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 			if(cis && facing && distance) {
 				rescued=true;
 			}else{
-				++qnameStats.WW; 
+				++qnameStats.WW;
+				begin=end; 
 				continue;  //rerturn;
 			}
 		}
+std::cout<<"pair UU"<<std::endl;
 
 //////pair stats
 		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
 		for(std::size_t i=begin; i<end; ++i){
-			if(group[i]->core.flag & BAM_FUNMAP) {continue;}
-			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
-			if(!(group[i]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppia è inutile fare la statistica
+			if(group[i]->core.flag & BAM_FUNMAP) {
+std::cout<<"1"<<std::endl;
+
+continue;}
+			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {
+std::cout<<"2"<<std::endl;
+
+continue;} //elimino i supplementari (devo farlo?)
+			if(!(group[i]->core.flag & BAM_FPAIRED)) {
+std::cout<<"3"<<std::endl;
+
+break;}// se non è una coppia è inutile fare la statistica
 
 			if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
 				++qnameStats.DD;
+std::cout<<"DD"<<std::endl;
+
 				continue;//return;
 			}
 			if(group[i]->core.flag & BAM_FREAD1) {
@@ -174,8 +195,11 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
 		if(a==Maptype::U && b==Maptype::R) {
 			++qnameStats.UR;
-			continue;//return;
+std::cout<<"UR"<<std::endl;
+begin=end;
+			continue;
 		} //unico di cui importa l'ordine
+std::cout<<"prima dello swap"<<std::endl;
 
 		if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
 
@@ -192,8 +216,11 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
 
 		begin=end;
-		
+		std::cout<<"begin=end finito while nel group"<<std::endl;
+
 	}
+std::cout<<"finito qname stats"<<std::endl;
+
 }
 	
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
@@ -354,7 +381,9 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 			readStats.error_rate=error_rate(mismatched_bases,total_base);
 		}
 	}
-	if(userInput.pair_read_stats){ 
+	if(userInput.pair_read_stats){
+std::cout<<"entriamo nel pair"<<std::endl;
+ 
 		qname_stats(vectorbox);
 	}
 }
@@ -403,11 +432,13 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 	vectorbox.clear();
 	for (int i=0; i<vectorbox.get_size_wanted();++i){ 
 		if(!vectorbox.add_record(fp_in,bamHdr))
+std::cout<<i<<std::endl;
+
 			break;
 	}
 }
 
-void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
+void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){//così controllo due volte il qname inceve di fare quel maledetto indice
 	std::string qname;
 	std::string current_qname;
 	bool bridge=true;
@@ -434,7 +465,10 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 			if(!(current_qname==qname)){
 				break;}
 			vectorbox.push_back(bridge_read);
-		}else{break;}
+		}else{
+std::cout<<vectorbox.size()<<std::endl;
+
+break;}
 	}
 }
 
@@ -480,14 +514,22 @@ void Runner::run() {
 
 		Bam_record_vector records_vector(j); 
 		bam1_t *bridge_read=bam_init1();
-
+std::cout<<"prima di tutto"<<std::endl;
 		while(!(records_vector.is_file_end())){ 
-			if(userInput.pair_read_stats){ 
+			if(userInput.pair_read_stats){
+std::cout<<"pair stats in while vector_record(pacchetti di 10 mila(o più))"<<std::endl;
+ 
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
 			}else if(userInput.single_read_stats){
+std::cout<<"single read stats in ehilw vector_record(pacchetti di 10 mila)"<<std::endl;
+
 				data_vector(records_vector,fp_in,bamHdr);
 			}
+std::cout<<"prima i processread"<<std::endl;
+
 			processReads(records_vector);
+std::cout<<"dopo process read"<<std::endl;
+
                 }
 
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
