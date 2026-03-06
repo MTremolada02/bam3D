@@ -1,4 +1,4 @@
- #include <stdlib.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string>
 #include <thread>
@@ -17,7 +17,7 @@
 
 #include "functions.h"
 #include "global.h"
-#include "newrunner.hpp"
+#include "indexnewrunner.hpp"
 
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
@@ -39,18 +39,18 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 }
 
 void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo! ora vedremo
-	std::size_t begin=0;//fist_read
-	std::size_t end=0;
 	std::string qname;
+    std::size_t begin=0;
+    std::size_t end=0;
 
-	std::vector <int> r1_side;
+	std::vector <std::size_t> r1_side;
 	r1_side.reserve(5);//inventato
-	std::vector <int> r2_side;
+	std::vector <std::size_t> r2_side;
 	r2_side.reserve(5);
 
-	uint8_t inner=0;
-	uint8_t outer=0;
-	uint8_t other=0;
+	std::size_t inner=0;
+	std::size_t outer=0;
+	std::size_t other=0;
 
 	bool rescued=false;
 	bool R1_chim=false;
@@ -66,11 +66,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 	Maptype a=qnameStats.type1=Maptype::N;;
 	Maptype b=qnameStats.type2=Maptype::N;;
 
-	while(begin<group.size()){ 
-		qname=bam_get_qname(group[begin]);
-		end=begin+1;
-		
-    	while(end < group.size() && bam_get_qname(group[end])==qname){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
+	for(std::size_t i=0;i<group.get_n_group();++i){ 
 
 		r1_side.clear();
 		r2_side.clear();
@@ -92,6 +88,12 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
 		a=qnameStats.type1=Maptype::N;
 		b=qnameStats.type2=Maptype::N;
+
+            if(i < group.get_n_group())
+                end = group.get_index(i);
+            else
+                end = group.size();
+
 
 //////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
 		for(std::size_t j=begin; j<end; ++j){
@@ -123,6 +125,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 				}
 			} else {
 				++qnameStats.WW;//return;
+                end=begin;
 				continue; 
 			}
 
@@ -143,6 +146,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 				rescued=true;
 			}else{
 				++qnameStats.WW; 
+                end=begin;
 				continue;  //rerturn;
 			}
 		}
@@ -174,6 +178,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
 		if(a==Maptype::U && b==Maptype::R) {
 			++qnameStats.UR;
+            end=begin;
 			continue;//return;
 		} //unico di cui importa l'ordine
 
@@ -195,7 +200,6 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		
 	}
 }
-	
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
     long double xk = std::abs((long double)bamdata->core.isize);  // TEN dLel record
     return (xk / k) + ((k - 1) / (long double)k) * prev_mean;									
@@ -213,14 +217,14 @@ double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
 }
 
 void Runner::histo_global_distance (std::unordered_map<uint64_t,uint64_t>& global_dist_count){
+
 	std::fstream myfile;
-	myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti) 
+	myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti)
 
 	if(!myfile.is_open()){
 		std::cout<<"pair_by_global_distance not open"<<std::endl;
 		return;
 	}
-
 	myfile << "distance" << "\t" << "count" << "\n";
 	for (auto i = global_dist_count.begin(); i != global_dist_count.end(); ++i) {
 		myfile << i->first << "\t" << i->second<< "\n";
@@ -360,45 +364,47 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 }
 
 
-void Runner::output(){
-	
-		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
-		std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
-		std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
-		std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;       
-		std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
-		std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
-		std::cout<<"Read1:"<<pairStats.read1<<std::endl; 
-		std::cout<<"Read2:"<<pairStats.read2<<std::endl;
-		std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
-		std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
-		std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
-		std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
-		std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
-		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
-		std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
-		std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
-		std::cout<<"Reads_mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
-		std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
-		std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
-		std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
-		std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
-		std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
-		
-		std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
-		std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
-}
 
+void Runner::output(){
+	std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
+	std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
+	std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
+	std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;       
+	std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
+	std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
+	std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
+	std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+	std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
+	std::cout<<"Read1:"<<pairStats.read1<<std::endl; 
+	std::cout<<"Read2:"<<pairStats.read2<<std::endl;
+	std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;
+	std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+	std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
+	std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
+	std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+	std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
+	std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
+	std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
+	std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
+	std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
+	
+	std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+	std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
+	std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
+	std::cout<<"Reads_mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
+	std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
+	std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+	std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
+	std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
+	std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
+    std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
+ 	std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
+    std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
+    std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
+	
+
+}
+ 
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
 	vectorbox.clear();
 	for (int i=0; i<vectorbox.get_size_wanted();++i){ 
@@ -408,37 +414,45 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 }
 
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
-	std::string qname;
-	std::string current_qname;
+	vectorbox.clear_index();
+	const char* qname;
+	const char* current_qname;
 	bool bridge=true;
 	vectorbox.clear();
 
-	for (int i=0;i<vectorbox.get_size_wanted();++i){
+	for (int i=0;i<vectorbox.get_size_wanted();++i){ //indice è [ ,vectorbox_size)
 		if(bridge){
 			if(first){//:( come faccio
 				vectorbox.add_record(fp_in,bamHdr);
+				qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
 				first =false;
 			}else{
 				vectorbox.push_back(bridge_read);
+				qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);//qname del bridge
 			}
 			bridge=false;
 			continue;
 		}
 		vectorbox.add_record(fp_in,bamHdr);
+		current_qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
+		if(strcmp(current_qname, qname) != 0){
+			qname=current_qname;
+			vectorbox.index_push_back(vectorbox.size());
+		}
 	}
 
-	qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
+	qname=current_qname;
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
 			current_qname=bam_get_qname(bridge_read);
-			if(!(current_qname==qname)){
-				break;}
+			if(strcmp(current_qname, qname) != 0){
+				vectorbox.index_push_back(vectorbox.size());
+				break;
+			}
 			vectorbox.push_back(bridge_read);
 		}else{break;}
 	}
 }
-
-
 
 void Runner::run() {
 
@@ -475,7 +489,7 @@ void Runner::run() {
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
-		std::size_t j=10000;//set real capacity
+		std::size_t j=10;//set real capacity
 		bool first=true;
 
 		Bam_record_vector records_vector(j); 
@@ -488,7 +502,7 @@ void Runner::run() {
 				data_vector(records_vector,fp_in,bamHdr);
 			}
 			processReads(records_vector);
-                }
+		}
 
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 
@@ -506,15 +520,18 @@ void Runner::run() {
 }
 
 
+
 //////////////////////////////////////////////////////////////////////////////////////////class functions definition
 
 Bam_record_vector::Bam_record_vector(std::size_t initial_capacity)
-    : used(0), hiwater_data(0), size_wanted(0), file_end(false)
+    : used(0), hiwater_data(0), size_wanted(0), file_end(false)//, n_group(0)
 {
     slots.reserve(initial_capacity);
+	index.reserve(initial_capacity);//grosso ma sensato nel senso che l'unico caso patologico da considerare è quello di 10k reads con diverso qname
 	size_wanted=initial_capacity;
     for (std::size_t i = 0; i < initial_capacity; ++i){ 
         slots.push_back(bam_init1());
+		index.push_back(0);
 	}
 }
 
@@ -558,9 +575,12 @@ std::size_t Bam_record_vector::size() const noexcept { return used; }
 std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
 std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wanted;}
 bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
-
+std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size();}
+std::size_t Bam_record_vector::get_index(std::size_t i) const noexcept { return index[i];}
+void Bam_record_vector::clear_index() noexcept {index.clear();} 
 bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
 const bam1_t* Bam_record_vector::operator[](std::size_t i) const noexcept { return slots[i]; }
+void Bam_record_vector::index_push_back(std::size_t i) noexcept {index.push_back(i);}
 
 bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 	if(used==slots.size()){expand(slots.empty() ? 10 : slots.size() * 2);}
@@ -571,6 +591,31 @@ bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 		file_end=true;
 		return false;
 	}
+}
+
+void Bam_record_vector::qname_index(){//indice vero, nel vettore sono èresenti read di inizio e fine gruppo->[5,13,...,used]
+	/*if(used>index.size()){
+		for(std::size_t i=index.size(); i<used;++i){
+			index.push_back(0);
+		}//ho già fatto reserve() forse non ha senso che li pre allochi essendo solo numeri (nel caso togliere il clear) e riaggiungere n_group
+	}*/	
+	//n_group=0;
+	index.clear();
+	//int j=0;
+	std::string current_qname;
+	std::string qname=bam_get_qname(slots[0]);
+	for (std::size_t i=1; i<used;++i){//segno quando cambia
+		current_qname=bam_get_qname(slots[i]);
+		if(qname!=current_qname){
+			qname=bam_get_qname(slots[i]);//dice meglui confrontare char*??
+			index.push_back(i);//index[i] la prima diversa (va già bene per un for)
+			//index[j]=i;
+			//++j;
+		}
+
+	}
+	index.push_back(used);
+//	n_group=j;
 }
 
 bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al primo slot libero del vectorbox.
@@ -590,11 +635,26 @@ bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al prim
     } else {
         bam_copy1(dst, src);
     }
+   /* const int need = src->l_data;
+    if (need > 0) {
+        const int target = std::max(need, hiwater_data);
+        if (target > dst->m_data) {
+            if (bam_resize1(dst, target) != 0)
+                throw std::bad_alloc();
+        }
+    }*/
+
+    //bam_copy1(dst, src);
     ++used;
 
     hiwater_data= std::max<int>(hiwater_data, dst->l_data);
 
 	return dst;
+}
+
+const char* Bam_record_vector::current_qname() const noexcept {
+    if (used==0) return nullptr;
+    return bam_get_qname(slots[used- 1]);
 }
 
 void Bam_record_vector::expand(std::size_t new_capacity) {
@@ -605,7 +665,7 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
         if (!b) throw std::bad_alloc();
 
 		if (hiwater_data > 0) {
-   			b->data = (uint8_t*)malloc(hiwater_data);
+   			b->data = (uint8_t*)malloc(hiwater_data);//guadagno reale?
    	 		if (!b->data) {
        			bam_destroy1(b);
        			throw std::bad_alloc();
@@ -614,5 +674,11 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
     		b->l_data = 0;
 		}
 		slots.push_back(b);
+       /* if (hiwater_data> 0) {
+            if (bam_resize1(b, hiwater_data) != 0) {
+                bam_destroy1(b);
+                throw std::bad_alloc();
+            }
+        }*/
     }
 }

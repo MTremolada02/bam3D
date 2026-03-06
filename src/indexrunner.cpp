@@ -17,7 +17,7 @@
 
 #include "functions.h"
 #include "global.h"
-#include "noindexrunner.hpp"
+#include "indexrunner.hpp"
 
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
@@ -255,64 +255,67 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 	
 
 void Runner::processReads(Bam_record_vector &vectorbox) {
-	uint64_t av_counter=0;
-	
-	uint64_t mismatched_bases=0;
-	uint64_t total_base=0;
+	if(userInput.single_read_stats || userInput.hist_global || userInput.hist_by_chrom){
+		uint64_t av_counter=0;
+		
+		uint64_t mismatched_bases=0;
+		uint64_t total_base=0;
 
-	std::unordered_map <uint64_t,uint64_t> global_dist_count; //per ora la tengo così
-	std::map <uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
-	uint32_t chrom=0;
-	uint64_t dist=0;
-	
-	for(int i=0;i<vectorbox.size();++i){
-			pairStats.good_read1=false;
-			pairStats.good_read2=false;
-			++readStats.readN;
-			////FLAG STATS;		
-			if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
-			flag_inspector(vectorbox[i]);
+		uint32_t chrom=0;
+		uint64_t dist=0;
 
-			if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
-				++pairStats.sameCr;
+		if(userInput.single_read_stats){ 
+			for(int i=0;i<vectorbox.size();++i){
+					pairStats.good_read1=false;
+					pairStats.good_read2=false;
+					++readStats.readN;
+					////FLAG STATS;		
+					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+					flag_inspector(vectorbox[i]);
+ 
+					if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
+						++pairStats.sameCr;
 
-				if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
-					++av_counter;			
-					readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i]);   
-					//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
- 					readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i]);
+						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
+							++av_counter;			
+							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i]);   
+							//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
+							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i]);
 
-				}
-				if(userInput.hist_global){ //HISTO_GLOBAL_DATA
-					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
-					++global_dist_count[dist]; 
-				}
-			
-				if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
-					chrom=vectorbox[i]->core.tid;
-					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
-					++chrom_dist_count[chrom][dist];
-				}
+						}
+						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
+							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
+							++global_dist_count[dist]; 
+						}
+					
+						if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
+							chrom=vectorbox[i]->core.tid;
+							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
+							++chrom_dist_count[chrom][dist];
+						}
+					}
+
+					if (pairStats.good_read1 || pairStats.good_read2) { 
+						uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
+						uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
+
+						mismatched_bases += nm;  
+						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
+						total_base += aligned;
+					} 
 			}
 
-			if (pairStats.good_read1 || pairStats.good_read2) { 
-				uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
-    			uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
-
-    			mismatched_bases += nm;  
-    			uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
-    			total_base += aligned;
-			} 
+			if ((readStats.readN % 2) == 0) {
+				pairStats.pairN=readStats.readN/2;
+			} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
+			readStats.error_rate=error_rate(mismatched_bases,total_base);
+		}
 	}
-
-	if(userInput.hist_global){histo_global_distance(global_dist_count);}
-	if (userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
-
-	if ((readStats.readN % 2) == 0) {
-		pairStats.pairN=readStats.readN/2;
-	} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
-	readStats.error_rate=error_rate(mismatched_bases,total_base);
+	if(userInput.pair_read_stats){ 
+		qname_stats(vectorbox);
+	}
 }
+
 
 
 void Runner::output(){
@@ -394,7 +397,7 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 	qname=current_qname;
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
-			current_qname=bam_get_qname(vectorbox[vectorbox.size()-1]);
+			current_qname=bam_get_qname(bridge_read);
 			if(!(current_qname==qname)){
 				vectorbox.index_push_back(vectorbox.size());
 				break;
@@ -405,18 +408,21 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 }
 
 void Runner::run() {
-	//std::cout<<"dai che fai"<<std::endl;
+
 	std::size_t numFiles = userInput.inFiles.size();
 	lg.verbose("Processing " + std::to_string(numFiles) + " files");
 	
 	for (uint32_t i = 0; i < numFiles; ++i) {
 
+		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
+		chrom_dist_count.clear();
+
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
 		
-		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"r"); //open bam file!!!!!!!!!!!!!!!!!!!!!!!
+		samFile *fp_in = hts_open(userInput.file('r', i).c_str(),"r"); 
 		if (!fp_in) {std::cout<<"hts_open has failed"<<std::endl;}
-		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); //read header
+		bam_hdr_t *bamHdr = sam_hdr_read(fp_in); 
 		if (!bamHdr) {std::cout<<"sam_hdr_read has failed"<<std::endl;}
 		
 		htsThreadPool tpool_read = {NULL, 0};
@@ -425,31 +431,36 @@ void Runner::run() {
 		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
 
 		bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
+		if (!userInput.single_read_stats && !userInput.pair_read_stats) {//default
+			userInput.single_read_stats = true;
+    		if (qname_sorted) {
+        	userInput.pair_read_stats = true;
+    		} else { std::cout<<"Warning: input BAM file is not qname sorted, pair read statistics will not be computed."<<std::endl;}
+		}
 		if(userInput.pair_read_stats && !qname_sorted){
+			userInput.pair_read_stats=false;
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
 		std::size_t j=10;//set real capacity
 		bool first=true;
 
-		//std::cout<<"prima di creare il record_vector"<<std::endl;
 		Bam_record_vector records_vector(j); 
 		bam1_t *bridge_read=bam_init1();
-		//std::cout<<"dopo aver creato il record_vector"<<std::endl;
 
 		while(!(records_vector.is_file_end())){ 
-			//caricare le box////////////////////////////////////////////////////aggiunngere tutte le possibilità del caso (non so se fare mille if abbia senso o è meglio michiesare meglio gli imput con dei booleani)
-			if(userInput.pair_read_stats){ //fillare la classe in base a cioò che viene passato da terminale (errore se vuole pairtools nel caso unsorted)
+			if(userInput.pair_read_stats){ 
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
-				//if vuole anche samtools
-				processReads(records_vector);
-				qname_stats(records_vector);
-
-			}else if(userInput.single_read_stats){//samtools
+			}else if(userInput.single_read_stats){
 				data_vector(records_vector,fp_in,bamHdr);
-				processReads(records_vector);
 			}
+			processReads(records_vector);
 		}
+
+		if(userInput.hist_global){histo_global_distance(global_dist_count);}
+
+		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
+    		
 
 		output();
 		
@@ -460,6 +471,7 @@ void Runner::run() {
 		hts_tpool_destroy(tpool_read.pool);
 	}
 }
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////class functions definition
