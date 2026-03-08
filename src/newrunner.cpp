@@ -1,4 +1,4 @@
- #include <stdlib.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string>
 #include <thread>
@@ -41,16 +41,16 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo! ora vedremo
 	std::size_t begin=0;//fist_read
 	std::size_t end=0;
-	std::string qname;
+	const char* qname;
 
 	std::vector <int> r1_side;
 	r1_side.reserve(5);//inventato
 	std::vector <int> r2_side;
 	r2_side.reserve(5);
 
-	uint8_t inner=0;
-	uint8_t outer=0;
-	uint8_t other=0;
+	std::size_t inner=0;
+	std::size_t outer=0;
+	std::size_t other=0;
 
 	bool rescued=false;
 	bool R1_chim=false;
@@ -70,14 +70,24 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		qname=bam_get_qname(group[begin]);
 		end=begin+1;
 		
-    	while(end < group.size() && bam_get_qname(group[end])==qname){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
+    	while(end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
+
+	/*	if(begin >= group.size()){
+    std::cout << "BAD BEGIN " << begin << " size=" << group.size() << std::endl;
+    break;
+}
+		std::cout << "\nGROUP begin=" << begin
+          << " end=" << end
+          << " size=" << (end - begin)
+          << " qnamei=" << bam_get_qname(group[begin])
+		  << " qnamef=" << bam_get_qname(group[end-1])<<std::endl;*/
 
 		r1_side.clear();
 		r2_side.clear();
 
-	    inner;
-	    outer;
-	    other;
+	    inner=0;
+	    outer=0;
+	    other=0;
 
 		rescued=false;
 		R1_chim=false;
@@ -100,10 +110,12 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
     		if (group[j]->core.flag & BAM_FREAD1) {
 				r1_side.push_back(j);//unico dai
+				std::cout<<"r1_side"<<j<<std::endl;
 			}
 			
-    		if (group[j]->core.flag & BAM_FREAD2) {
+    		if (group[j]->core.flag & BAM_FREAD2) { 
 				r2_side.push_back(j);
+				std::cout<<"r2_side"<<j<<std::endl;
 			}
 		}
 
@@ -122,7 +134,9 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 					R2_chim=true;
 				}
 			} else {
+				std::cout<<"ww1"<<std::endl;
 				++qnameStats.WW;//return;
+				begin=end;
 				continue; 
 			}
 
@@ -143,6 +157,8 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 				rescued=true;
 			}else{
 				++qnameStats.WW; 
+				std::cout<<"WW2"<<std::endl;
+				begin=end;
 				continue;  //rerturn;
 			}
 		}
@@ -156,6 +172,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
 			if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
 				++qnameStats.DD;
+				begin=end;
 				continue;//return;
 			}
 			if(group[i]->core.flag & BAM_FREAD1) {
@@ -174,6 +191,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
 		if(a==Maptype::U && b==Maptype::R) {
 			++qnameStats.UR;
+			begin=end;
 			continue;//return;
 		} //unico di cui importa l'ordine
 
@@ -408,8 +426,8 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 }
 
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
-	std::string qname;
-	std::string current_qname;
+	const char* qname;
+	const char* current_qname;
 	bool bridge=true;
 	vectorbox.clear();
 
@@ -431,10 +449,10 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
 			current_qname=bam_get_qname(bridge_read);
-			if(!(current_qname==qname)){
+			if(strcmp(current_qname, qname) != 0){
 				break;}
-			vectorbox.push_back(bridge_read);
-		}else{break;}
+			vectorbox.push_back(bridge_read); 
+		}else{break;}                 
 	}
 }
 
@@ -475,11 +493,11 @@ void Runner::run() {
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
-		std::size_t j=10000;//set real capacity
+		std::size_t j=10;//set real capacity
 		bool first=true;
-
+ 
 		Bam_record_vector records_vector(j); 
-		bam1_t *bridge_read=bam_init1();
+		bam1_t *bridge_read=bam_init1(); //È UN PUNTATORE
 
 		while(!(records_vector.is_file_end())){ 
 			if(userInput.pair_read_stats){ 
