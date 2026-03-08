@@ -1,5 +1,5 @@
-#ifndef indexrunner_hpp
-#define indexrunner_hpp
+#ifndef oldrunner_hpp
+#define oldrunner_hpp
 
 #include <htslib/sam.h>
 #include <map>
@@ -86,21 +86,15 @@ public:
 
     // main API
     bam1_t* push_back(const bam1_t* src);
-    const char* current_qname() const noexcept;
 
     // container-like helpers
     void clear() noexcept;
     std::size_t size() const noexcept;
     std::size_t capacity() const noexcept;
 	std::size_t get_size_wanted() const noexcept;
-	std::size_t get_n_group() const noexcept;
-	void clear_index() noexcept;//!!!!!!!!!!!!!!!!
-	void index_push_back(std::size_t i) noexcept;//!!!!!!!!!!
-	std::size_t get_index(std::size_t i) const noexcept;
 	bool is_file_end() const noexcept;
 
 	bool add_record(samFile *fp_in,bam_hdr_t *bamHdr);
-	void qname_index();
 
     bam1_t* operator[](std::size_t i) noexcept;
     const bam1_t* operator[](std::size_t i) const noexcept;
@@ -109,11 +103,9 @@ private:
     void expand(std::size_t new_capacity);
 
     std::vector<bam1_t*> slots;
-	std::vector<std::size_t> index;
 	std::size_t size_wanted=0;
-    std::size_t used = 0; //il primo libero
-	//std::size_t n_group=0;//in alternativa posso usare .clear() ma posso anche solo sovrascrivere
-    int hiwater_data = 0;//servirà questo controllo manuale della memoria?
+    std::size_t used = 0; 
+    int hiwater_data = 0;
 	bool file_end=false; 
 };
 
@@ -124,13 +116,14 @@ class Runner {
 	PairStats pairStats;
 	QnameStats qnameStats;
 
-	private:
+private:
+
+private:
 
     std::unordered_map<uint64_t,uint64_t> global_dist_count;
     std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
     
 public:
-    
     void loadInput(UserInputBam3D userInput);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
@@ -140,7 +133,7 @@ public:
 	void flag_inspector(bam1_t*);
 	void histo_global_distance(std::unordered_map<uint64_t, uint64_t>&);
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
-    void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
+        void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
 	void processReads(Bam_record_vector &);
 	void output();
@@ -148,4 +141,4 @@ public:
     
 };
 
-#endif /* indexrunner_hpp */
+#endif /* oldrunner_hpp */

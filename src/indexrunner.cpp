@@ -38,12 +38,12 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 	return bases;
 }
 
+//indice [0,4,8,12,15,...] tutti compresi. numero dei gruppi index_size-1.
 void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo!
-	std::size_t j=0;//nuermo read
-	std::size_t tmpj=0;
+	std::size_t begin=0;//nuermo read
 
-	for(std::size_t i=0; i<group.get_n_group(); ++i){
-		std::size_t group_end = group.get_index(i);//es i=3 significa chr index[3]=numero del read in cui cambia qname
+	for(std::size_t i=0; i<group.get_n_group(); ++i){//perchè ho inizio e fine cell'indice
+		std::size_t end = group.get_index(i+1);//no io in vectorbox ho vectorbox.index_push_back(vectorbox.size()); che è già il primo diverso
 
 
 		std::vector <bam1_t*> r1_side, r2_side;
@@ -63,8 +63,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		Maptype b=qnameStats.type2=Maptype::N; //così se esiste solo uno dei due read (anche se con flag paired attiva), lo mette a null;
 //////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
 
-		tmpj=j;
-		for(j;j<group_end; ++j){//scorrerà tutte le read fion a used
+		for(std::size_t j=begin;j<end; ++j){//scorrerà tutte le read fion a used
 			if (group[j]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
     		if (group[j]->core.flag & BAM_FUNMAP) continue;
 
@@ -85,6 +84,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 				}
 			} else {
 				++qnameStats.WW;//return;
+				begin=end;
 				continue; 
 			}
 
@@ -102,26 +102,28 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 				rescued=true;
 			}else{
 				++qnameStats.WW; 
+				begin=end;
 				continue;  //rerturn;
 			}
 		}
 
 //////pair stats
-		j=tmpj;//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
-		for(j;j<group_end; ++j){
+		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
+		for(std::size_t j=begin;j<end; ++j){
 			if(group[j]->core.flag & BAM_FUNMAP) {continue;}
 			if(group[j]->core.flag & BAM_FSUPPLEMENTARY) {continue;} //elimino i supplementari (devo farlo?)
 			if(!(group[j]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppiaè inutile fare la statistica
 
 			if(!(group[j]->core.flag & BAM_FSECONDARY) && group[j]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
 				++qnameStats.DD;
+				begin=end;
 				continue;//return;
 			}
 			if(group[j]->core.flag & BAM_FREAD1) {
 				if(group[j]->core.flag & BAM_FSECONDARY) {mapped_count1++;
 				}else{mapped_count1++;} //dovrebbe essere il primary
 			}
-			if(group[j]->core.flag & BAM_FREAD1) {++mapped_count1;}
+			//if(group[j]->core.flag & BAM_FREAD1) {++mapped_count1;}
 			if(group[j]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary
 		}
 
@@ -133,6 +135,7 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
 		if(a==Maptype::U && b==Maptype::R) {
 			++qnameStats.UR;
+			begin=end;
 			continue;//return;
 		} //unico di cui importa l'ordine
 
@@ -150,7 +153,9 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
 		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
 		
+		begin=end;
 	}
+
 }
 	
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
@@ -368,10 +373,11 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
 	vectorbox.clear_index();
-	std::string qname;
-	std::string current_qname;
-	bool bridge=true;
 	vectorbox.clear();
+	const char* qname;
+	const char* current_qname;
+	bool bridge=true;
+	vectorbox.index_push_back(0);
 
 	for (int i=0;i<vectorbox.get_size_wanted();++i){
 		if(bridge){
@@ -388,23 +394,24 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 		}
 		vectorbox.add_record(fp_in,bamHdr);
 		current_qname=bam_get_qname(vectorbox[vectorbox.size() - 1]);
-		if(qname!=current_qname){
+		if(strcmp(current_qname, qname) != 0){
 			qname=current_qname;
-			vectorbox.index_push_back(vectorbox.size());
+			vectorbox.index_push_back(vectorbox.size()-1);//!!!!!!!!!!!!!!!!!!!!!!!!111
 		}
 	}
 
-	qname=current_qname;
+	qname = bam_get_qname(vectorbox[vectorbox.size() - 1]); //qname==current_qname
 	for(;;){
 		if(sam_read1(fp_in, bamHdr, bridge_read)>=0){ 
 			current_qname=bam_get_qname(bridge_read);
-			if(!(current_qname==qname)){
-				vectorbox.index_push_back(vectorbox.size());
+			if(strcmp(current_qname, qname) != 0){
+				//vectorbox.index_push_back(vectorbox.size());
 				break;
 			}
 			vectorbox.push_back(bridge_read);
 		}else{break;}
 	}
+	vectorbox.index_push_back(vectorbox.size());
 }
 
 void Runner::run() {
@@ -528,7 +535,7 @@ std::size_t Bam_record_vector::size() const noexcept { return used; }
 std::size_t Bam_record_vector::capacity() const noexcept { return slots.size(); }
 std::size_t Bam_record_vector::get_size_wanted() const noexcept {return size_wanted;}
 bool Bam_record_vector::is_file_end() const noexcept {return file_end;}
-std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size();}
+std::size_t Bam_record_vector::get_n_group() const noexcept { return index.size()-1;} //[0,1,2,3,4,5] i gruppi sono index.size()-1;!!!!!!!!!!!!!!!!!!!!!!!!!!!
 std::size_t Bam_record_vector::get_index(std::size_t i) const noexcept { return index[i];}
 void Bam_record_vector::clear_index() noexcept {index.clear();} 
 bam1_t* Bam_record_vector::operator[](std::size_t i) noexcept { return slots.at(i); }
