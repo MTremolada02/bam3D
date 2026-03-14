@@ -22,7 +22,23 @@
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
+/*
+uint64_t Runner::cigar_mapped_bases(const bam1_t* b) {
+    const uint32_t* cigar = bam_get_cigar(b);
+    uint64_t len = 0;
+    for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
+        uint32_t op = bam_cigar_op(cigar[i]);
+        uint32_t oplen = bam_cigar_oplen(cigar[i]);
 
+        if (op == BAM_CMATCH || op == BAM_CINS ||
+            op == BAM_CEQUAL || op == BAM_CDIFF) {
+            len += oplen;
+        }
+        // ESCLUDE esplicitamente BAM_CSOFT_CLIP e BAM_CDEL, BAM_CREF_SKIP, ecc.
+    }
+    return len;
+}
+*/
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
 	const uint32_t* cigar = bam_get_cigar(b);
@@ -112,12 +128,12 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 
     		if (group[j]->core.flag & BAM_FREAD1) {
 				r1_side.push_back(j);//unico dai
-				std::cout<<"r1_side"<<j<<std::endl;
+//				std::cout<<"r1_side"<<j<<std::endl;
 			}
 			
     		if (group[j]->core.flag & BAM_FREAD2) { 
 				r2_side.push_back(j);
-				std::cout<<"r2_side"<<j<<std::endl;
+//				std::cout<<"r2_side"<<j<<std::endl;
 			}
 		}
 
@@ -165,21 +181,21 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 				continue;  //rerturn;
 			}
 		}
-std::cout<<"pair UU"<<std::endl;
+//std::cout<<"pair UU"<<std::endl;
 
 //////pair stats
 		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
 		for(std::size_t i=begin; i<end; ++i){
 			if(group[i]->core.flag & BAM_FUNMAP) {
-std::cout<<"1"<<std::endl;
+//std::cout<<"1"<<std::endl;
 
 continue;}
 			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {
-std::cout<<"2"<<std::endl;
+//std::cout<<"2"<<std::endl;
 
 continue;} //elimino i supplementari (devo farlo?)
 			if(!(group[i]->core.flag & BAM_FPAIRED)) {
-std::cout<<"3"<<std::endl;
+//std::cout<<"3"<<std::endl;
 
 break;}// se non è una coppia è inutile fare la statistica
 
@@ -209,7 +225,7 @@ break;}// se non è una coppia è inutile fare la statistica
 begin=end;
 			continue;
 		} //unico di cui importa l'ordine
-std::cout<<"prima dello swap"<<std::endl;
+//std::cout<<"prima dello swap"<<std::endl;
 
 		if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
 
@@ -226,10 +242,10 @@ std::cout<<"prima dello swap"<<std::endl;
 		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
 
 		begin=end;
-		std::cout<<"begin=end finito while nel group"<<std::endl;
+//		std::cout<<"begin=end finito while nel group"<<std::endl;
 
 	}
-std::cout<<"finito qname stats"<<std::endl;
+//std::cout<<"finito qname stats"<<std::endl;
 
 }
 	
@@ -336,10 +352,10 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 
 void Runner::processReads(Bam_record_vector &vectorbox) {
 	if(userInput.single_read_stats || userInput.hist_global || userInput.hist_by_chrom){
-		uint64_t av_counter=0;
+		//uint64_t av_counter=0;
 		
-		uint64_t mismatched_bases=0;
-		uint64_t total_base=0;
+		//uint64_t mismatched_bases=0;
+		//uint64_t total_base=0;
 
 		uint32_t chrom=0;
 		uint64_t dist=0;
@@ -350,17 +366,18 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 					pairStats.good_read2=false;
 					++readStats.readN;
 					////FLAG STATS;		
-					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+					//if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) && !(vectorbox[i]->core.flag & BAM_FSECONDARY) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
 					flag_inspector(vectorbox[i]);
  
 					if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
 						++pairStats.sameCr;
 
-						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
-							++av_counter;			
-							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, av_counter, vectorbox[i]);   
+						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0 && std::abs((long double)vectorbox[i]->core.isize)<20000){//così hanno sempre orientamenti opposti
+							++readStats.av_counter;			
+							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
 							//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
-							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,av_counter, vectorbox[i]);
+							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
 
 						}
 						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
@@ -376,23 +393,25 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 					}
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
-						uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
+			      // if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
+                                 		uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
 						uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
 
-						mismatched_bases += nm;  
+						readStats.mismatched_bases += nm;  
 						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
-						total_base += aligned;
+						//uint64_t aligned = cigar_mapped_bases(vectorbox[i]);//elimina gli S
+						readStats.total_mapped_base += aligned;
 					} 
 			}
 
 			if ((readStats.readN % 2) == 0) {
 				pairStats.pairN=readStats.readN/2;
 			} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
-			readStats.error_rate=error_rate(mismatched_bases,total_base);
+			//readStats.error_rate=error_rate(mismatched_bases,total_base);
 		}
 	}
 	if(userInput.pair_read_stats){
-std::cout<<"entriamo nel pair"<<std::endl;
+//std::cout<<"entriamo nel pair"<<std::endl;
  
 		qname_stats(vectorbox);
 	}
@@ -400,39 +419,44 @@ std::cout<<"entriamo nel pair"<<std::endl;
 
 
 void Runner::output(){
-	
-		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl;
-		std::cout<<"Tot_record:"<<readStats.readN<<std::endl;
-		std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl; 
-		std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;       
-		std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
-		std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
-		std::cout<<"Read1:"<<pairStats.read1<<std::endl; 
+		std::cout<<"Tot_raw_record:"<<readStats.readN<<std::endl;
+		std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl;
+		std::cout<<"supplementary"<<readStats.supplementary<<std::endl; 
+		std::cout<<"Read1:"<<pairStats.read1<<std::endl;
 		std::cout<<"Read2:"<<pairStats.read2<<std::endl;
-		std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
-		std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
-		std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+		std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;
+		std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;       
+		//std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
+		std::cout<<"Proper_pairs:"<<pairStats.proper_pairs<<std::endl;;
+		//std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
+		//std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
+		std::cout<<"Duplicated:"<<pairStats.duplicated<<std::endl;
+		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl; 
+		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
+		std::cout<<"One_sided:"<<pairStats.UMone_sided<<std::endl;
+		std::cout<<"Two_sided:"<<pairStats.UMtwo_sided<<std::endl;
+		//std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+		//std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
+		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
+		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
+		std::cout<<"CIS:"<<pairStats.sameCr<<std::endl;  
 		std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
 		std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
-		std::cout<<"error_rate:"<<readStats.error_rate<<std::endl;
+		std::cout<<"error_rate:"<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
 		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
 		std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
-		std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
-		std::cout<<"Reads_mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
-		std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
+		std::cout<<"mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
+		//std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
+		//std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
 		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
 		std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
 		std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
-		std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
-		std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
-		std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
+		//std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
+		//std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
+		//std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
+		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
+		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
 		
 		std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 		std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
@@ -516,7 +540,7 @@ void Runner::run() {
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
-		std::size_t j=10;//set real capacity
+		std::size_t j=10000;//set real capacity
 		bool first=true;
  
 		Bam_record_vector records_vector(j); 

@@ -29,6 +29,10 @@ struct ReadStats {
     uint64_t primary = 0;
     uint64_t mapQ0 = 0;
 
+               	uint64_t mismatched_bases=0;
+                uint64_t total_mapped_base=0;
+		std::size_t av_counter=0;
+
 	long double mean_insert=0;
 	long double quadratic_mean=0;
 
@@ -125,6 +129,7 @@ private:
     
 public:
     void loadInput(UserInputBam3D userInput);
+	uint64_t cigar_mapped_bases(const bam1_t*);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
 	double error_rate(uint64_t,uint64_t);
