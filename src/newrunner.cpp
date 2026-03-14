@@ -89,17 +89,6 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 		
     	while(end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
 
-	/*	if(begin >= group.size()){
-    std::cout << "BAD BEGIN " << begin << " size=" << group.size() << std::endl;
-    break;
-}
-		std::cout << "\nGROUP begin=" << begin
-          << " end=" << end
-          << " size=" << (end - begin)
-          << " qnamei=" << bam_get_qname(group[begin])
-		  << " qnamef=" << bam_get_qname(group[end-1])<<std::endl;*/
-
-
 		r1_side.clear();
 		r2_side.clear();
 
@@ -246,9 +235,56 @@ begin=end;
 
 	}
 //std::cout<<"finito qname stats"<<std::endl;
-
 }
 	
+void Runner::estimate_insert_stats()
+{
+    uint32_t peak_bin = 0;
+    uint64_t peak_count = 0;
+
+    for (const auto& kv : readStats.insert_hist) {
+        if (kv.second > peak_count) {
+            peak_count = kv.second;
+            peak_bin = kv.first;
+        }
+    }
+
+    uint32_t window = 10; // ±10 bin
+    uint32_t low_bin  = (peak_bin > window) ? peak_bin - window : 0;
+    uint32_t high_bin = peak_bin + window;
+
+    long double sum = 0.0;
+    long double sumsq = 0.0;
+    uint64_t n = 0;
+
+    for (const auto& kv : readStats.insert_hist) {
+
+        uint32_t bin = kv.first;
+        uint64_t count = kv.second;
+
+        if (bin < low_bin || bin > high_bin)
+            continue;
+
+        long double x = (bin + 0.5L) * readStats.bin_size;
+
+        sum   += x * count;
+        sumsq += x * x * count;
+        n     += count;
+    }
+
+    if (n == 0) {
+        readStats.mean_insert = 0;
+        readStats.sd_insert = 0;
+        return;
+    }
+
+    long double mean = sum / n;
+    long double var  = (sumsq / n) - mean * mean;
+
+    readStats.mean_insert = mean;
+    readStats.sd_insert = std::sqrt(var);
+}
+
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
     long double xk = std::abs((long double)bamdata->core.isize);  // TEN dLel record
     return (xk / k) + ((k - 1) / (long double)k) * prev_mean;									
@@ -365,20 +401,24 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 					pairStats.good_read1=false;
 					pairStats.good_read2=false;
 					++readStats.readN;
-					////FLAG STATS;		
-					//if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+						
+					
 					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) && !(vectorbox[i]->core.flag & BAM_FSECONDARY) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
 					flag_inspector(vectorbox[i]);
  
 					if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
 						++pairStats.sameCr;
 
-						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0 && std::abs((long double)vectorbox[i]->core.isize)<20000){//così hanno sempre orientamenti opposti
-							++readStats.av_counter;			
+						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
+						/*	++readStats.av_counter;			
 							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
 							//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
 							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
+						*/
+							uint32_t x = std::abs(vectorbox[i]->core.isize);
+    						uint32_t bin = x / readStats.bin_size;
 
+    						++readStats.insert_hist[bin];
 						}
 						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
 							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
@@ -441,9 +481,11 @@ void Runner::output(){
 		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
 		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
 		std::cout<<"CIS:"<<pairStats.sameCr<<std::endl;  
-		std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl; 
-		std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
-		std::cout<<"error_rate:"<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
+		std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl;
+		std ::cout<<"insert_size_average:"<<readStats.mean_insert<<std::endl;
+		std ::cout<<"SD_insert_size:"<<readStats.sd_insert<<std::endl;
+		//std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
+		//std::cout<<"error_rate:"<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
 		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
 		std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
 		std::cout<<"mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
@@ -548,24 +590,17 @@ void Runner::run() {
 
 		while(!(records_vector.is_file_end())){ 
 			if(userInput.pair_read_stats){
-//std::cout<<"pair stats in while vector_record(pacchetti di 10 mila(o più))"<<std::endl;
- 
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
 			}else if(userInput.single_read_stats){
-//std::cout<<"single read stats in ehilw vector_record(pacchetti di 10 mila)"<<std::endl;
-
 				data_vector(records_vector,fp_in,bamHdr);
 			}
-//std::cout<<"prima i processread"<<std::endl;
-
 			processReads(records_vector);
-//std::cout<<"dopo process read"<<std::endl;
+    	}
 
-                }
-
+		estimate_insert_stats();
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
-
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
+
     		
 
 		output();
