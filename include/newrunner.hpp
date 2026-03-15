@@ -32,13 +32,16 @@ struct ReadStats {
     uint64_t mismatched_bases=0;
     uint64_t total_mapped_base=0;
 	std::size_t av_counter=0;
-	std::unordered_map<uint32_t, uint64_t> insert_hist; //bin , counter
-	const uint32_t bin_size = 100;   // 100 bp per bin
-	uint64_t sd_insert=0;
-	uint64_t mean_insert=0;
+	std::size_t avf_counter=0;
+//	std::map<uint32_t, uint64_t> insert_hist; //bin , counter
+//	const uint32_t bin_size = 100;   // 100 bp per bin
+//	uint64_t sd_insert=0;
+//	uint64_t mean_insert=0;
 
-	//long double mean_insert=0;
-	//long double quadratic_mean=0;
+	long double mean_insert=0;
+	long double quadratic_mean=0;
+	long double mean_insert_filtr=0;
+	long double quadratic_mean_filtr=0;
 
 	double error_rate=0;
 };
@@ -53,6 +56,7 @@ struct PairStats {
     uint64_t UMone_sided  = 0;
     uint64_t UMtwo_sided  = 0;
     uint64_t duplicated   = 0;
+    uint64_t UNmapped     = 0;
     uint64_t sameCr       = 0;  // cis
 
     uint64_t read1 = 0;
@@ -136,14 +140,14 @@ public:
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
-	void estimate_insert_stats();
+//	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);
 	uint16_t Alignstarts(const bam1_t*);
 	void qname_stats(Bam_record_vector &);
 	void flag_inspector(bam1_t*);
 	void histo_global_distance(std::unordered_map<uint64_t, uint64_t>&);
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
-    void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
+        void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
 	void processReads(Bam_record_vector &);
 	void output();

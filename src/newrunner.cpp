@@ -179,24 +179,25 @@ void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere ri
 //std::cout<<"1"<<std::endl;
 
 continue;}
-			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {
+//			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //std::cout<<"2"<<std::endl;
 
-continue;} //elimino i supplementari (devo farlo?)
+//continue;} //elimino i supplementari (devo farlo?)!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			if(!(group[i]->core.flag & BAM_FPAIRED)) {
 //std::cout<<"3"<<std::endl;
 
 break;}// se non è una coppia è inutile fare la statistica
 
-			if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
-				++qnameStats.DD;
+//			if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
+//				++qnameStats.DD;
 //std::cout<<"DD"<<std::endl;
-				begin=end;
-				continue;//return;
-			}
+//				begin=end;
+//				continue;//return;
+//			}
 			if(group[i]->core.flag & BAM_FREAD1) {
-				if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;
-				}else{mapped_count1++;} //dovrebbe essere il primary
+//				if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;
+//				}else{mapped_count1++;} //dovrebbe essere il primary
+				++mapped_count1;
 			}
 			//if(group[tmp]->core.flag & BAM_FREAD1) {++mapped_count1;}
 			if(group[i]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary della R2
@@ -212,7 +213,8 @@ break;}// se non è una coppia è inutile fare la statistica
 			++qnameStats.UR;
 //std::cout<<"UR"<<std::endl;
 begin=end;
-			continue;
+break;
+			//continue;
 		} //unico di cui importa l'ordine
 //std::cout<<"prima dello swap"<<std::endl;
 
@@ -236,7 +238,7 @@ begin=end;
 	}
 //std::cout<<"finito qname stats"<<std::endl;
 }
-	
+/*	
 void Runner::estimate_insert_stats()
 {
     uint32_t peak_bin = 0;
@@ -284,17 +286,53 @@ void Runner::estimate_insert_stats()
     readStats.mean_insert = mean;
     readStats.sd_insert = std::sqrt(var);
 }
+*/
+/*
+void Runner::estimate_insert_stats() {
+    uint64_t total = 0;
+    for (const auto& kv : readStats.insert_hist) {
+        total += kv.second;
+    }
 
+    if (total == 0) {
+        readStats.mean_insert = 0.0L;
+        readStats.quadratic_mean = 0.0L;
+        return;
+    }
+
+    const long double bulk_fraction = 0.99L;
+
+    uint64_t bulk_count = 0;
+    long double sum = 0.0L;
+    long double sumsq = 0.0L;
+
+    for (const auto& kv : readStats.insert_hist) {
+        uint32_t isize = kv.first;
+        uint64_t count = kv.second;
+
+        bulk_count += count;
+        sum += (long double)isize * count;
+        sumsq += (long double)isize * isize * count;
+
+        if ((long double)bulk_count / (long double)total > bulk_fraction) {
+            break;
+        }
+    }
+
+    readStats.mean_insert = sum / (long double)bulk_count;
+    readStats.quadratic_mean = sumsq / (long double)bulk_count;
+}
+*/
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
     long double xk = std::abs((long double)bamdata->core.isize);  // TEN dLel record
     return (xk / k) + ((k - 1) / (long double)k) * prev_mean;									
 }
 
-long double Runner::update_quadratic_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){ //<x^2> FORSE SBAGLIATA
+long double Runner::update_quadratic_mean_tlen(long double prev_qmean,std::uint64_t k, bam1_t* bamdata){ //<x^2> FORSE SBAGLIATA
 	long double xk = std::abs((long double)bamdata->core.isize);  // TLEN del record
 	long double xk2 = xk * xk;
  //   return (pow(xk,2) / k) + ((k - 1) / (long double)k) * pow(prev_mean,2);
-	return prev_mean + (xk2 - prev_mean) / (long double)k;
+	return prev_qmean + (xk2 - prev_qmean) / (long double)k;
 }
 
 double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
@@ -369,9 +407,10 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 			++pairStats.read1;
 
 			if ((flag & BAM_FUNMAP && !(flag & BAM_FMUNMAP))^(flag & BAM_FMUNMAP && !(flag & BAM_FUNMAP))) {++pairStats.UMone_sided;} // statistica fatta sul singolo se no è doppia
-			else if (flag & BAM_FUNMAP && (flag & BAM_FMUNMAP)) {++pairStats.UMtwo_sided;}
+			else if (flag & BAM_FUNMAP && (flag & BAM_FMUNMAP)) {++pairStats.UNmapped;}
 	
 			if(!(flag & BAM_FUNMAP) && !(flag & BAM_FMUNMAP)) {
+				++pairStats.UMtwo_sided;
 				pairStats.good_read1=true;
 				++pairStats.good_pairs;
 			}
@@ -401,24 +440,44 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 					pairStats.good_read1=false;
 					pairStats.good_read2=false;
 					++readStats.readN;
+				/*		
 						
-					
+					 if ((vectorbox[i]->core.flag & BAM_FPAIRED) &&
+        !(vectorbox[i]->core.flag & BAM_FUNMAP) &&
+        !(vectorbox[i]->core.flag & BAM_FMUNMAP) &&
+        !(vectorbox[i]->core.flag & BAM_FSECONDARY) &&
+        !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) &&
+        vectorbox[i]->core.isize > 0)   // una sola read per coppia
+    {
+        uint32_t x = std::abs(vectorbox[i]->core.isize);
+        readStats.insert_hist[x]++;
+    }					
+*/
+	
 					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) && !(vectorbox[i]->core.flag & BAM_FSECONDARY) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
 					flag_inspector(vectorbox[i]);
  
 					if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
 						++pairStats.sameCr;
-
 						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
-						/*	++readStats.av_counter;			
+							if(std::abs((long double)vectorbox[i]->core.isize)<10000){
+								++readStats.avf_counter;
+								readStats.mean_insert_filtr = update_mean_tlen(readStats.mean_insert_filtr, readStats.avf_counter, vectorbox[i]);
+								readStats.quadratic_mean_filtr=update_quadratic_mean_tlen(readStats.quadratic_mean_filtr,readStats.avf_counter, vectorbox[i]);
+								}
+							++readStats.av_counter;			
 							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
 							//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
 							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
-						*/
-							uint32_t x = std::abs(vectorbox[i]->core.isize);
+							
+						
+						/*
+						uint32_t x = std::abs(vectorbox[i]->core.isize);
+						if(x>500){
     						uint32_t bin = x / readStats.bin_size;
 
     						++readStats.insert_hist[bin];
+						}*/
 						}
 						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
 							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
@@ -473,19 +532,23 @@ void Runner::output(){
 		std::cout<<"Duplicated:"<<pairStats.duplicated<<std::endl;
 		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
 		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl; 
-		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl; 
-		std::cout<<"One_sided:"<<pairStats.UMone_sided<<std::endl;
-		std::cout<<"Two_sided:"<<pairStats.UMtwo_sided<<std::endl;
-		//std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		//std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
+		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl;
+		std::cout<<"Pairs_two_sided_mapped:"<<pairStats.UMtwo_sided<<std::endl; 
+		std::cout<<"Pairs_one_sided_mapped:"<<pairStats.UMone_sided<<std::endl;
+		std::cout<<"Pairs_unmapped:"<<pairStats.UNmapped<<std::endl;//each side
+		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
+		std::cout<<"%unmapped_2sided"<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
 		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
 		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
 		std::cout<<"CIS:"<<pairStats.sameCr<<std::endl;  
-		std::cout<<"mean_insert:"<<readStats.mean_insert<<std::endl;
+		std::cout<<"insert_size_avarage_filtred:"<<readStats.mean_insert_filtr<<std::endl;
+		std::cout<<"SD_filtr:"<<sqrt(readStats.quadratic_mean_filtr-pow(readStats.mean_insert_filtr,2))<<std::endl; //rad(<x^2>-<x>^2)
 		std ::cout<<"insert_size_average:"<<readStats.mean_insert<<std::endl;
-		std ::cout<<"SD_insert_size:"<<readStats.sd_insert<<std::endl;
-		//std::cout<<"insert SD:"<<sqrt(readStats.quadratic_mean-pow(readStats.mean_insert,2))<<std::endl; //rad(<x^2>-<x>^2)
-		//std::cout<<"error_rate:"<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
+		std::cout<<"SD:"<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
+		//std ::cout<<"SD_insert_size:"<<readStats.sd_insert<<std::endl;
+		//std::cout << "insert size average:\t" << readStats.mean_insert << std::endl;
+		std::cout<<"error_rate:"<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
 		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
 		std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
 		std::cout<<"mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
@@ -597,7 +660,7 @@ void Runner::run() {
 			processReads(records_vector);
     	}
 
-		estimate_insert_stats();
+//		estimate_insert_stats();
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
