@@ -54,189 +54,141 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 	return bases;
 }
 
-void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo! ora vedremo
-	std::size_t begin=0;//fist_read
-	std::size_t end=0;
-	const char* qname;
+void Runner::qname_stats(Bam_record_vector &group) {
+    std::size_t begin = 0;
+	std::size_t end = 0;
 
-	std::vector <std::size_t> r1_side;
-	r1_side.reserve(5);//inventato
-	std::vector <std::size_t> r2_side;
-	r2_side.reserve(5);
-
-	std::size_t inner=0;
-	std::size_t outer=0;
-	std::size_t other=0;
-
-
-	bool rescued=false;
-	bool R1_chim=false;
-	bool R2_chim=false;
-
-	bool cis=false;
-	bool facing=false;
-	bool distance=false;
-
-	std::size_t mapped_count1=0;
-	std::size_t mapped_count2=0;
+	std::vector<std::size_t> r1_side; r1_side.reserve(5);
+    std::vector<std::size_t> r2_side; r2_side.reserve(5);
+ 
+        // Stati per N/U/M e per walk/rescue
+    std::size_t mapped_r1 = 0, mapped_r2 = 0;
+    std::size_t secondary_r1 = 0, secondary_r2 = 0;
+    bool duplicated = false;
+    bool rescued = false;
+    bool is_walk = false;
+    bool R1_chim = false;
+    bool R2_chim = false;
+    std::size_t inner = 0, outer = 0, other = 0;
 
 	Maptype a=qnameStats.type1=Maptype::N;;
 	Maptype b=qnameStats.type2=Maptype::N;;
 
-	while(begin<group.size()){ 
-		qname=bam_get_qname(group[begin]);
-		end=begin+1;
-		
-    	while(end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
 
+    while (begin < group.size()) {
+        const char* qname = bam_get_qname(group[begin]);
+        end = begin + 1;
+        while (end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0) ++end;
+       
 		r1_side.clear();
 		r2_side.clear();
 
-	    inner=0;
-	    outer=0;
-	    other=0;
-
-		rescued=false;
-		R1_chim=false;
-		R2_chim=false;
-
-		cis=false;
-		facing=false;
-		distance=false;
-
-		mapped_count1=0;
-		mapped_count2=0;
+		mapped_r1 = 0, mapped_r2 = 0;
+        secondary_r1 = 0, secondary_r2 = 0;
+        duplicated = false;
+        rescued = false;
+        is_walk = false;
+        R1_chim = false;
+        R2_chim = false;
+        inner = 0, outer = 0, other = 0;
 
 		a=qnameStats.type1=Maptype::N;
 		b=qnameStats.type2=Maptype::N;
 
-//////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
-		for(std::size_t j=begin; j<end; ++j){
-			if (group[j]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
-    		if (group[j]->core.flag & BAM_FUNMAP) continue;
+		
+        // 1) Raccolta dati
+        for (std::size_t j = begin; j < end; ++j) {
+            auto flag = group[j]->core.flag;
 
-    		if (group[j]->core.flag & BAM_FREAD1) {
-				r1_side.push_back(j);//unico dai
-//				std::cout<<"r1_side"<<j<<std::endl;
-			}
-			
-    		if (group[j]->core.flag & BAM_FREAD2) { 
-				r2_side.push_back(j);
-//				std::cout<<"r2_side"<<j<<std::endl;
-			}
-		}
+            if (flag & BAM_FDUP) duplicated = true;
+            if (flag & BAM_FUNMAP) continue;
 
-		if(r1_side.size()>=2 || r2_side.size()>=2){
-			if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
-				if	(r1_side.size() == 2) {
-					inner = r1_side.at(0);
-					outer = r1_side.at(1);
-					other = r2_side.at(0);
-					R1_chim=true;
+            if (flag & BAM_FREAD1) ++mapped_r1;
+            if (flag & BAM_FREAD2) ++mapped_r2;
 
-				}else if (r2_side.size() == 2){
-					inner = r2_side.at(0);
-					outer = r2_side.at(1);
-					other = r1_side.at(0);
-					R2_chim=true;
-				}
-			} else {
-				++qnameStats.WW;
-				begin=end;
-//std::cout<<"WW"<<std::endl;
+            if (flag & BAM_FSECONDARY) {
+                if (flag & BAM_FREAD1) ++secondary_r1;
+                if (flag & BAM_FREAD2) ++secondary_r2;
+                continue;                     // per walk usiamo solo primary + supp
+            }
 
-				continue; 
-			}
+            if (flag & BAM_FREAD1) r1_side.push_back(j);
+            if (flag & BAM_FREAD2) r2_side.push_back(j);
+        }
 
-			auto start_i = Alignstarts(group[inner]);
-			auto start_ou = Alignstarts(group[outer]);
+        // 2) Classificazione N/U/M (sempre eseguita)
+        a = (mapped_r1 == 0 ? Maptype::N :
+					 (secondary_r1 > 0 || group[r1_side.empty() ? 0 : r1_side[0]]->core.qual < 1) ? Maptype::M : Maptype::U);
 
-			if (start_i > start_ou){std::swap(inner, outer);}//se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
-//RIGUARDARE SENSO BIOLOGICO
+        b = (mapped_r2 == 0 ? Maptype::N :
+                     (secondary_r2 > 0 || group[r2_side.empty() ? 0 : r2_side[0]]->core.qual < 1) ? Maptype::M : Maptype::U);
 
-			bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
-			bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
-			//controlli 
-			if((group[inner])->core.tid==(group[other])->core.tid) {cis=true;} 
-			if((!rev_i &&  rev_ot && group[inner]->core.pos <= group[other]->core.pos) || ( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos)) {facing=true;}
-			if(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000) {distance=true;}////di default 2000 pb
+        // 3) Logica walk / rescued
+        if (r1_side.size() >= 2 || r2_side.size() >= 2) {
+            if ((r1_side.size() == 2 && r2_side.size() == 1) ||
+                (r2_side.size() == 2 && r1_side.size() == 1)) {
 
-			if(cis && facing && distance) {
-				rescued=true;
-			}else{
-				++qnameStats.WW; 
-//				std::cout<<"WW2"<<std::endl;
-				begin=end;
-				continue;  //rerturn;
-			}
-		}
-//std::cout<<"pair UU"<<std::endl;
+                if (r1_side.size() == 2) {
+                    inner = r1_side[0]; outer = r1_side[1]; other = r2_side[0]; R1_chim = true;
+                } else {
+                    inner = r2_side[0]; outer = r2_side[1]; other = r1_side[0]; R2_chim = true;
+                }
 
-//////pair stats
-		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
-		for(std::size_t i=begin; i<end; ++i){
-			if(group[i]->core.flag & BAM_FUNMAP) {
-//std::cout<<"1"<<std::endl;
+                if (Alignstarts(group[inner]) > Alignstarts(group[outer])) std::swap(inner, outer);
 
-continue;}
-//			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//std::cout<<"2"<<std::endl;
+                bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
+                bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
 
-//continue;} //elimino i supplementari (devo farlo?)!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			if(!(group[i]->core.flag & BAM_FPAIRED)) {
-//std::cout<<"3"<<std::endl;
+                bool cis = (group[inner]->core.tid == group[other]->core.tid);
+                bool facing = ((!rev_i && rev_ot && group[inner]->core.pos <= group[other]->core.pos) ||
+                               (rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos));
+                bool distance = (llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000);
 
-break;}// se non è una coppia è inutile fare la statistica
+                if (cis && facing && distance) {
+                    rescued = true;
+                } else {
+                    is_walk = true;
+                }
+            } else {
+                is_walk = true;
+            }
+        }
 
-//			if(!(group[i]->core.flag & BAM_FSECONDARY) && group[i]->core.flag & BAM_FDUP) { //per ora uso i duplicati marcati nel bamfile, si può fare un mappa in cui si salvano tutte le coppie e si controllano realmente i duplicati
-//				++qnameStats.DD;
-//std::cout<<"DD"<<std::endl;
-//				begin=end;
-//				continue;//return;
-//			}
-			if(group[i]->core.flag & BAM_FREAD1) {
-//				if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;
-//				}else{mapped_count1++;} //dovrebbe essere il primary
-				++mapped_count1;
-			}
-			//if(group[tmp]->core.flag & BAM_FREAD1) {++mapped_count1;}
-			if(group[i]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary della R2
-		}
+        if (is_walk) {
+            ++qnameStats.WW;
+            // NON facciamo continue → andiamo avanti con la classificazione
+        }
 
-		a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
-		b=(mapped_count2==0 ? Maptype::N :(mapped_count2==1 ? Maptype::U : Maptype::M));
+        // 4) Se rescued, il lato chimerico diventa R
+        if (rescued && R1_chim) a = Maptype::R;
+        if (rescued && R2_chim) b = Maptype::R;
 
-		if(rescued && R1_chim) {a=Maptype::R;}
-		if(rescued && R2_chim) {b=Maptype::R;}
+        // 5) Duplicati (dopo aver contato tutto)
+        if (duplicated) {
+            ++qnameStats.DD;
+            begin = end;
+            continue;
+        }
 
-		if(a==Maptype::U && b==Maptype::R) {
-			++qnameStats.UR;
-//std::cout<<"UR"<<std::endl;
-begin=end;
-break;
-			//continue;
-		} //unico di cui importa l'ordine
-//std::cout<<"prima dello swap"<<std::endl;
+        // 6) Classificazione finale (sempre eseguita)
+        if (a == Maptype::U && b == Maptype::R) {
+            ++qnameStats.UR;
+        } else {
+            if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) std::swap(a, b);
 
-		if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
+            if (a == Maptype::U && b == Maptype::U) ++qnameStats.UU;
+            if (a == Maptype::M && b == Maptype::M) ++qnameStats.MM;
+            if (a == Maptype::N && b == Maptype::N) ++qnameStats.NN;
+            if (a == Maptype::M && b == Maptype::U) ++qnameStats.MU;
+            if (a == Maptype::U && b == Maptype::N) ++qnameStats.NU;
+            if (a == Maptype::M && b == Maptype::N) ++qnameStats.NM;
+            if (a == Maptype::R && b == Maptype::U) ++qnameStats.RU;
+            if (a == Maptype::R && b == Maptype::M) ++qnameStats.MR;
+            if (a == Maptype::R && b == Maptype::N) ++qnameStats.NR;
+        }
 
-		if(a==Maptype::U && b==Maptype::U) ++qnameStats.UU;
-		if(a==Maptype::M && b==Maptype::M) ++qnameStats.MM;
-		if(a==Maptype::N && b==Maptype::N) ++qnameStats.NN;
-
-		if(a==Maptype::M && b==Maptype::U) ++qnameStats.MU;
-		if(a==Maptype::U && b==Maptype::N) ++qnameStats.NU;
-		if(a==Maptype::M && b==Maptype::N) ++qnameStats.NM;
-
-		if(a==Maptype::R && b==Maptype::U) ++qnameStats.RU;
-		if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
-		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
-
-		begin=end;
-//		std::cout<<"begin=end finito while nel group"<<std::endl;
-
-	}
-//std::cout<<"finito qname stats"<<std::endl;
+        begin = end;
+    }
 }
 /*	
 void Runner::estimate_insert_stats()
@@ -787,3 +739,162 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
 		slots.push_back(b);
     }
 }
+/* 
+void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo! ora vedremo
+	std::size_t begin=0;//fist_read
+	std::size_t end=0;
+	const char* qname;
+
+	std::vector <std::size_t> r1_side;
+	r1_side.reserve(5);//inventato
+	std::vector <std::size_t> r2_side;
+	r2_side.reserve(5);
+
+	std::size_t inner=0;
+	std::size_t outer=0;
+	std::size_t other=0;
+
+
+	bool rescued=false;
+	bool R1_chim=false;
+	bool R2_chim=false;
+
+	bool cis=false;
+	bool facing=false;
+	bool distance=false;
+
+	std::size_t mapped_count1=0;
+	std::size_t mapped_count2=0;
+
+	Maptype a=qnameStats.type1=Maptype::N;;
+	Maptype b=qnameStats.type2=Maptype::N;;
+
+	while(begin<group.size()){ 
+		qname=bam_get_qname(group[begin]);
+		end=begin+1;
+		
+    	while(end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
+
+		r1_side.clear();
+		r2_side.clear();
+
+	    inner=0;
+	    outer=0;
+	    other=0;
+
+		rescued=false;
+		R1_chim=false;
+		R2_chim=false;
+
+		cis=false;
+		facing=false;
+		distance=false;
+
+		mapped_count1=0;
+		mapped_count2=0;
+
+		a=qnameStats.type1=Maptype::N;
+		b=qnameStats.type2=Maptype::N;
+
+//////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
+		for(std::size_t j=begin; j<end; ++j){
+			if (group[j]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
+    		if (group[j]->core.flag & BAM_FUNMAP) continue;
+
+    		if (group[j]->core.flag & BAM_FREAD1) {
+				r1_side.push_back(j);//unico dai
+			}
+			
+    		if (group[j]->core.flag & BAM_FREAD2) { 
+				r2_side.push_back(j);
+			}
+		}
+
+		if(r1_side.size()>=2 || r2_side.size()>=2){
+			if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
+				if	(r1_side.size() == 2) {
+					inner = r1_side.at(0);
+					outer = r1_side.at(1);
+					other = r2_side.at(0);
+					R1_chim=true;
+
+				}else if (r2_side.size() == 2){
+					inner = r2_side.at(0);
+					outer = r2_side.at(1);
+					other = r1_side.at(0);
+					R2_chim=true;
+				}
+			} else {
+				++qnameStats.WW;
+				begin=end;
+
+				continue; 
+			}
+
+			auto start_i = Alignstarts(group[inner]);
+			auto start_ou = Alignstarts(group[outer]);
+
+			if (start_i > start_ou){std::swap(inner, outer);}//se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
+//RIGUARDARE SENSO BIOLOGICO
+
+			bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
+			bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
+			//controlli 
+			if((group[inner])->core.tid==(group[other])->core.tid) {cis=true;} 
+			if((!rev_i &&  rev_ot && group[inner]->core.pos <= group[other]->core.pos) || ( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos)) {facing=true;}
+			if(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000) {distance=true;}////di default 2000 pb
+
+			if(cis && facing && distance) {
+				rescued=true;
+			}else{
+				++qnameStats.WW; 
+				begin=end;
+				continue;  
+			}
+		}
+
+//////pair stats
+		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
+		for(std::size_t i=begin; i<end; ++i){
+			if(group[i]->core.flag & BAM_FUNMAP) {continue;}
+//			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+//continue;} //elimino i supplementari (devo farlo?)!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			if(!(group[i]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppia è inutile fare la statistica
+			if(group[i]->core.flag & BAM_FREAD1) {
+				if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;
+				}else{mapped_count1++;} //dovrebbe essere il primary
+				++mapped_count1;
+			}
+			if(group[i]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary della R2
+		}
+
+		a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
+		b=(mapped_count2==0 ? Maptype::N :(mapped_count2==1 ? Maptype::U : Maptype::M));
+
+		if(rescued && R1_chim) {a=Maptype::R;}
+		if(rescued && R2_chim) {b=Maptype::R;}
+
+		if(a==Maptype::U && b==Maptype::R) {
+			++qnameStats.UR;
+			begin=end;
+			continue;
+		}
+
+		if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
+
+		if(a==Maptype::U && b==Maptype::U) ++qnameStats.UU;
+		if(a==Maptype::M && b==Maptype::M) ++qnameStats.MM;
+		if(a==Maptype::N && b==Maptype::N) ++qnameStats.NN;
+
+		if(a==Maptype::M && b==Maptype::U) ++qnameStats.MU;
+		if(a==Maptype::U && b==Maptype::N) ++qnameStats.NU;
+		if(a==Maptype::M && b==Maptype::N) ++qnameStats.NM;
+
+		if(a==Maptype::R && b==Maptype::U) ++qnameStats.RU;
+		if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
+		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
+
+		begin=end;
+	}
+}*/
