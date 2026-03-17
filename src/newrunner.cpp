@@ -84,14 +84,14 @@ void Runner::qname_stats(Bam_record_vector &group) {
         end = begin + 1;
         while (end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0) ++end;
        
-	r1_side.clear();
-	r2_side.clear();
+		r1_side.clear();
+		r2_side.clear();
 
-	total_read = 0;
-	mapped_r1 = 0, mapped_r2 = 0;
+		total_read = 0;
+		mapped_r1 = 0, mapped_r2 = 0;
         primary_r1 = (std::size_t)-1, primary_r2 = (std::size_t)-1;
         secondary_r1 = 0, secondary_r2 = 0;
-	supplementary_r1 = 0, supplementary_r2 = 0;
+		supplementary_r1 = 0, supplementary_r2 = 0;
         duplicated = false;
         rescued = false;
         is_walk = false;
@@ -105,48 +105,48 @@ void Runner::qname_stats(Bam_record_vector &group) {
 		
         // 1) Raccolta dati
         for (std::size_t j = begin; j < end; ++j) {
-	total_read = end-begin;
+			total_read = end-begin;
             auto flag = group[j]->core.flag;
 
             if (flag & BAM_FDUP) duplicated = true;
             if (flag & BAM_FUNMAP) continue;
 
-if (flag & BAM_FREAD1) {
-    if(!(flag & BAM_FSECONDARY)) r1_side.push_back(j);//primary+supplementary
-    ++mapped_r1;
-    if (flag & BAM_FSECONDARY) ++secondary_r1; 
-    else if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r1;
-    else primary_r1 = j;
-}
+			if (flag & BAM_FREAD1) {
+				if(!(flag & BAM_FSECONDARY)) r1_side.push_back(j);//primary+supplementary
+				++mapped_r1;
+				if (flag & BAM_FSECONDARY) ++secondary_r1; 
+				else if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r1;
+				else primary_r1 = j;
+			}
 
-if (flag & BAM_FREAD2) {
-    if(!(flag & BAM_FSECONDARY)) r2_side.push_back(j);//primary+supplementary
-    ++mapped_r2;
-    if (flag & BAM_FSECONDARY) ++secondary_r2;
-    else if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r2;
-    else primary_r2 = j;
-}
+			if (flag & BAM_FREAD2) {
+				if(!(flag & BAM_FSECONDARY)) r2_side.push_back(j);//primary+supplementary
+				++mapped_r2;
+				if (flag & BAM_FSECONDARY) ++secondary_r2;
+				else if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r2;
+				else primary_r2 = j;
+			}
         }
 
         // 2) Classificazione N/U/M (sempre eseguita)
-if (mapped_r1 == 0)
-    a = Maptype::N;
-else if (mapped_r1 > 1)
-    a = Maptype::M;
-else if (primary_r1 == (std::size_t)-1 || group[primary_r1]->core.qual < 1)
-    a = Maptype::M;
-else
-    a = Maptype::U;
+		if (mapped_r1 == 0)
+			a = Maptype::N;
+		else if (mapped_r1 > 1)
+			a = Maptype::M;
+		else if (primary_r1 == (std::size_t)-1 || group[primary_r1]->core.qual < 1)
+			a = Maptype::M;
+		else
+			a = Maptype::U;
 
 
-if (mapped_r2 == 0)
-    b = Maptype::N;
-else if (mapped_r2 > 1)
-    b = Maptype::M;
-else if (primary_r2 == (std::size_t)-1 || group[primary_r2]->core.qual < 1)
-    b = Maptype::M;
-else
-    b = Maptype::U;
+		if (mapped_r2 == 0)
+			b = Maptype::N;
+		else if (mapped_r2 > 1)
+			b = Maptype::M;
+		else if (primary_r2 == (std::size_t)-1 || group[primary_r2]->core.qual < 1)
+			b = Maptype::M;
+		else
+			b = Maptype::U;
 /*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	a = (mapped_r1 == 0) ? Maptype::N
   		: (secondary_r1 > 0) ? Maptype::M
@@ -235,190 +235,209 @@ else {
         is_walk = true;
     }
  }*/
-if (total_read == 3) {
+		if (total_read == 3) {
 
-    if ((r1_side.size() == 2 && r2_side.size() <= 1) ||
-        (r2_side.size() == 2 && r1_side.size() <= 1)) {
+			if ((r1_side.size() == 2 && r2_side.size() <= 1) ||
+				(r2_side.size() == 2 && r1_side.size() <= 1)) {
 
-        // identificazione lato chimerico
-        if (r1_side.size() == 2) {
+				// identificazione lato chimerico
+				if (r1_side.size() == 2) {
+					inner = r1_side[0];
+					outer = r1_side[1];
+					R1_chim = true;
 
-            inner = r1_side[0];
-            outer = r1_side[1];
-            R1_chim = true;
+					if (!r2_side.empty())
+						other = r2_side[0];
+					else
+						other = (std::size_t)-1;
 
-            if (!r2_side.empty())
-                other = r2_side[0];
-            else
-                other = (std::size_t)-1;
+				} else {
+					inner = r2_side[0];
+					outer = r2_side[1];
+					R2_chim = true;
 
-        } else {
+					if (!r1_side.empty())
+						other = r1_side[0];
+					else
+						other = (std::size_t)-1;
+				}
 
-            inner = r2_side[0];
-            outer = r2_side[1];
-            R2_chim = true;
+				// ordinamento inner/outer
+				if (Alignstarts(group[inner]) > Alignstarts(group[outer]))
+					std::swap(inner, outer);
 
-            if (!r1_side.empty())
-                other = r1_side[0];
-            else
-                other = (std::size_t)-1;
-        }
+				// -------- rescue logic --------
+				if (other == (std::size_t)-1) {
 
-        // ordinamento inner/outer
-        if (Alignstarts(group[inner]) > Alignstarts(group[outer]))
-            std::swap(inner, outer);
+					rescued = true;
+					if (R1_chim)
+						b = Maptype::N;
+					else
+						a = Maptype::N;
 
-        // -------- rescue logic --------
+				} else {
 
-        if (other == (std::size_t)-1) {
+					bool inner_bad = (group[inner]->core.qual < 1);
 
-            // lato opposto unmapped → RN
-            rescued = true;
-	    if (R1_chim)
-       		 b = Maptype::N;
-   	     else
-       		 a = Maptype::N;
-        } else {
+					if (inner_bad) {
+						rescued = true;
 
-            bool inner_bad = (group[inner]->core.qual < 1);
+					} else {
 
-            if (inner_bad) {
+						bool rev_i  = group[inner]->core.flag & BAM_FREVERSE;
+						bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
 
-                // inner non-unique → rescue
-                rescued = true;
+						bool cis =
+							(group[inner]->core.tid == group[other]->core.tid);
 
-            } else {
+						bool facing =
+							((!rev_i && rev_ot && group[inner]->core.pos <= group[other]->core.pos) ||
+							( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos));
 
-                bool rev_i  = group[inner]->core.flag & BAM_FREVERSE;
-                bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
+						bool distance =
+							(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000);
 
-                bool cis =
-                    (group[inner]->core.tid == group[other]->core.tid);
+						if (cis && facing && distance)
+							rescued = true;
+						else
+							is_walk = true;
+					}
+				}
 
-                bool facing =
-                    ((!rev_i && rev_ot && group[inner]->core.pos <= group[other]->core.pos) ||
-                     ( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos));
+			} else {
+				// total_read == 3 ma NON pattern 2+1
+				is_walk = true;
+			}
+		}
 
-                bool distance =
-                    (llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000);
+		// QUESTO È FUORI DA TUTTI GLI IF SOPRA
+		if (is_walk) {
+			++qnameStats.WW;
+			begin = end;
+			continue;
+		}
+	/*  bool r1_candidate = (r1_side.size() == 2);
+			bool r2_candidate = (r2_side.size() == 2);
 
-                if (cis && facing && distance)
-                    rescued = true;
-                else
-                    is_walk = true;
-            }
-        }
+			if(r1_side.size() >= 3 ||
+			r2_side.size() >= 3 ||
+			(r1_side.size() >= 2 && r2_side.size() >= 2))
+			{
+				is_walk = true;
+			}
 
-    } else {
+			else if(r1_candidate || r2_candidate){
 
-        is_walk = true;
-    }
-}
-        if (is_walk) {
-            ++qnameStats.WW;
-	    begin=end;
-	    continue;
-        }
+				if(r1_candidate){
+					inner = r1_side[0];
+					outer = r1_side[1];
+					R1_chim = true;
+				}
 
-/*  bool r1_candidate = (r1_side.size() == 2);
-        bool r2_candidate = (r2_side.size() == 2);
+				if(r2_candidate){
+					inner = r2_side[0];
+					outer = r2_side[1];
+					R2_chim = true;
+				}
 
-        if(r1_side.size() >= 3 ||
-           r2_side.size() >= 3 ||
-           (r1_side.size() >= 2 && r2_side.size() >= 2))
-        {
-            is_walk = true;
-        }
+				auto start_i  = Alignstarts(group[inner]);
+				auto start_ou = Alignstarts(group[outer]);
 
-        else if(r1_candidate || r2_candidate){
+				if(start_i > start_ou)
+					std::swap(inner, outer);
 
-            if(r1_candidate){
-                inner = r1_side[0];
-                outer = r1_side[1];
-                R1_chim = true;
-            }
+				bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
 
-            if(r2_candidate){
-                inner = r2_side[0];
-                outer = r2_side[1];
-                R2_chim = true;
-            }
+				bool cis = false;
+				bool facing = false;
+				bool distance = false;
 
-            auto start_i  = Alignstarts(group[inner]);
-            auto start_ou = Alignstarts(group[outer]);
+				if(!r2_side.empty() && R1_chim)
+					other = r2_side[0];
 
-            if(start_i > start_ou)
-                std::swap(inner, outer);
+				if(!r1_side.empty() && R2_chim)
+					other = r1_side[0];
 
-            bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
+				if(other < group.size()){
 
-            bool cis = false;
-            bool facing = false;
-            bool distance = false;
+					bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
 
-            if(!r2_side.empty() && R1_chim)
-                other = r2_side[0];
+					if(group[inner]->core.tid == group[other]->core.tid)
+						cis = true;
 
-            if(!r1_side.empty() && R2_chim)
-                other = r1_side[0];
+					if((!rev_i && rev_ot &&
+						group[inner]->core.pos <= group[other]->core.pos) ||
+					( rev_i && !rev_ot &&
+						group[other]->core.pos <= group[inner]->core.pos))
+						facing = true;
 
-            if(other < group.size()){
+					if(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000)
+						distance = true;
+				}
 
-                bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
+				if(cis && facing && distance)
+					rescued = true;
+			}
 
-                if(group[inner]->core.tid == group[other]->core.tid)
-                    cis = true;
+			if(is_walk){
+				++qnameStats.WW;
+				begin = end;
+				continue;
+			}
+	*/
+			// 4) Se rescued, il lato chimerico diventa R
+		if (rescued && R1_chim) a = Maptype::R;
+		if (rescued && R2_chim) b = Maptype::R;
 
-                if((!rev_i && rev_ot &&
-                    group[inner]->core.pos <= group[other]->core.pos) ||
-                   ( rev_i && !rev_ot &&
-                    group[other]->core.pos <= group[inner]->core.pos))
-                    facing = true;
+		// 5) Duplicati (dopo aver contato tutto)
+		if (duplicated) {
+			++qnameStats.DD;
+			begin = end;
+			continue;
+		}
 
-                if(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000)
-                    distance = true;
-            }
+		// 6) Classificazione finale (sempre eseguita)
+		bool classified = false;
 
-            if(cis && facing && distance)
-                rescued = true;
-        }
+		// caso speciale UR (lo vuoi separato)
+		if (a == Maptype::U && b == Maptype::R) {
+			++qnameStats.UR;
+			classified = true;
+		}
 
-        if(is_walk){
-            ++qnameStats.WW;
-            begin = end;
-            continue;
-        }
-*/
-        // 4) Se rescued, il lato chimerico diventa R
-        if (rescued && R1_chim) a = Maptype::R;
-        if (rescued && R2_chim) b = Maptype::R;
+		// simmetrizza SEMPRE (tranne UR se vuoi mantenerlo così)
+		if (!classified) {
+			if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) //il tipo più grande sta in a (N=0 < U=1 < M=2 < R=3)
+				std::swap(a, b);
 
-        // 5) Duplicati (dopo aver contato tutto)
-        if (duplicated) {
-            ++qnameStats.DD;
-            begin = end;
-            continue;
-        }
+			if (a == Maptype::U && b == Maptype::U) { ++qnameStats.UU; classified = true; }
+			else if (a == Maptype::M && b == Maptype::M) { ++qnameStats.MM; classified = true; }
+			else if (a == Maptype::N && b == Maptype::N) { ++qnameStats.NN; classified = true; }
+			else if (a == Maptype::M && b == Maptype::U) { ++qnameStats.MU; classified = true; }
+			else if (a == Maptype::U && b == Maptype::N) { ++qnameStats.NU; classified = true; }
+			else if (a == Maptype::M && b == Maptype::N) { ++qnameStats.NM; classified = true; }
+			else if (a == Maptype::R && b == Maptype::U) { ++qnameStats.RU; classified = true; }
+			else if (a == Maptype::R && b == Maptype::M) { ++qnameStats.MR; classified = true; }
+			else if (a == Maptype::R && b == Maptype::N) { ++qnameStats.NR; classified = true; }
+		}
 
-        // 6) Classificazione finale (sempre eseguita)
-        if (a == Maptype::U && b == Maptype::R) {
-            ++qnameStats.UR;
-        } else {
-            if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) std::swap(a, b);
+		// fallback reale
+		if (!classified) {
+			++qnameStats.LOST;
+			std::cout << bam_get_qname(group[begin])
+					<< " LOST: a=" << int(a)
+					<< " b=" << int(b)
+					<< " mapped_r1=" << mapped_r1
+					<< " mapped_r2=" << mapped_r2
+					<< " r1_side=" << r1_side.size()
+					<< " r2_side=" << r2_side.size()
+					<< " primary_r1=" << primary_r1
+					<< " primary_r2=" << primary_r2
+					<< "\n";
+		}
 
-            if (a == Maptype::U && b == Maptype::U) ++qnameStats.UU;
-            if (a == Maptype::M && b == Maptype::M) ++qnameStats.MM;
-            if (a == Maptype::N && b == Maptype::N) ++qnameStats.NN;
-            if (a == Maptype::M && b == Maptype::U) ++qnameStats.MU;
-            if (a == Maptype::U && b == Maptype::N) ++qnameStats.NU;
-            if (a == Maptype::M && b == Maptype::N) ++qnameStats.NM;
-            if (a == Maptype::R && b == Maptype::U) ++qnameStats.RU;
-            if (a == Maptype::R && b == Maptype::M) ++qnameStats.MR;
-            if (a == Maptype::R && b == Maptype::N) ++qnameStats.NR;
-        }
-
-        begin = end;
-    }
+	begin = end;
+	}
 }
 /*	
 void Runner::estimate_insert_stats()

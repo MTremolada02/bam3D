@@ -66,6 +66,7 @@ struct PairStats {
 enum class Maptype :uint8_t {N=0, U=1, M=2, R=3};
 
 struct QnameStats { 
+	uint64_t LOST;
 	Maptype type1;
 	Maptype type2;
 
