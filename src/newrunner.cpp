@@ -39,14 +39,15 @@ uint64_t Runner::cigar_mapped_bases(const bam1_t* b) {
     return len;
 }
 */
+//se aggiungo I ottengo alignend non start
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
 	const uint32_t* cigar = bam_get_cigar(b);
-	uint16_t bases=0;
+	std::size_t bases=0;
 
 	for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
-        int8_t op  = bam_cigar_op(cigar[i]);//cigar operator character
-        int8_t len = bam_cigar_oplen(cigar[i]);//quante basi per lettera (es.50S)
+        int   op = bam_cigar_op(cigar[i]);//cigar operator character
+        int  len = bam_cigar_oplen(cigar[i]);//quante basi per lettera (es.50S)
 
 		if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {break;}//inizia l'allineamento con M,X,=
 		if (op == BAM_CSOFT_CLIP || op == BAM_CINS) {bases+=len;}//sommo quante basi S e I ci sono prima che la read si allinei al riferimento
@@ -65,7 +66,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
     std::size_t total_read = 0;
     std::size_t mapped_r1 = 0, mapped_r2 = 0;
     std::size_t secondary_r1 = 0, secondary_r2 = 0;
-    std::size_t primary_r1 = 0, primary_r2 = 0;
+    std::size_t primary_r1 = (std::size_t)-1, primary_r2 = (std::size_t)-1;
     std::size_t supplementary_r1 = 0, supplementary_r2 = 0;
     bool duplicated = false;
     bool rescued = false;
@@ -88,7 +89,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
 
 	total_read = 0;
 	mapped_r1 = 0, mapped_r2 = 0;
-        primary_r1 = 0, primary_r2 = 0;
+        primary_r1 = (std::size_t)-1, primary_r2 = (std::size_t)-1;
         secondary_r1 = 0, secondary_r2 = 0;
 	supplementary_r1 = 0, supplementary_r2 = 0;
         duplicated = false;
@@ -128,7 +129,25 @@ if (flag & BAM_FREAD2) {
         }
 
         // 2) Classificazione N/U/M (sempre eseguita)
+if (mapped_r1 == 0)
+    a = Maptype::N;
+else if (mapped_r1 > 1)
+    a = Maptype::M;
+else if (primary_r1 == (std::size_t)-1 || group[primary_r1]->core.qual < 1)
+    a = Maptype::M;
+else
+    a = Maptype::U;
 
+
+if (mapped_r2 == 0)
+    b = Maptype::N;
+else if (mapped_r2 > 1)
+    b = Maptype::M;
+else if (primary_r2 == (std::size_t)-1 || group[primary_r2]->core.qual < 1)
+    b = Maptype::M;
+else
+    b = Maptype::U;
+/*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	a = (mapped_r1 == 0) ? Maptype::N
   		: (secondary_r1 > 0) ? Maptype::M
   		: (primary_r1 == static_cast<std::size_t>(-1)) ? Maptype::M
@@ -140,10 +159,10 @@ if (flag & BAM_FREAD2) {
   		: (primary_r2 == static_cast<std::size_t>(-1)) ? Maptype::M
   		: (group[primary_r2]->core.qual < 1) ? Maptype::M
   		: Maptype::U;
-
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*/
 
         // 3) Logica walk / rescued
-if (total_read == 3) {
+/*if (total_read == 3) {
     if ((r1_side.size() == 2 && r2_side.size() <= 1) ||
         (r2_side.size() == 2 && r1_side.size() <= 1)) {//perchè gli unmapped non entrano nel vettore
 
@@ -158,7 +177,7 @@ if (total_read == 3) {
             other = r1_side[0]; 
             R2_chim = true;
         }*/
-
+/*
 if (r1_side.size() == 2) {
 
     inner = r1_side[0];
@@ -215,8 +234,87 @@ else {
     } else {
         is_walk = true;
     }
+ }*/
+if (total_read == 3) {
+
+    if ((r1_side.size() == 2 && r2_side.size() <= 1) ||
+        (r2_side.size() == 2 && r1_side.size() <= 1)) {
+
+        // identificazione lato chimerico
+        if (r1_side.size() == 2) {
+
+            inner = r1_side[0];
+            outer = r1_side[1];
+            R1_chim = true;
+
+            if (!r2_side.empty())
+                other = r2_side[0];
+            else
+                other = (std::size_t)-1;
+
+        } else {
+
+            inner = r2_side[0];
+            outer = r2_side[1];
+            R2_chim = true;
+
+            if (!r1_side.empty())
+                other = r1_side[0];
+            else
+                other = (std::size_t)-1;
+        }
+
+        // ordinamento inner/outer
+        if (Alignstarts(group[inner]) > Alignstarts(group[outer]))
+            std::swap(inner, outer);
+
+        // -------- rescue logic --------
+
+        if (other == (std::size_t)-1) {
+
+            // lato opposto unmapped → RN
+            rescued = true;
+	    if (R1_chim)
+       		 b = Maptype::N;
+   	     else
+       		 a = Maptype::N;
+        } else {
+
+            bool inner_bad = (group[inner]->core.qual < 1);
+
+            if (inner_bad) {
+
+                // inner non-unique → rescue
+                rescued = true;
+
+            } else {
+
+                bool rev_i  = group[inner]->core.flag & BAM_FREVERSE;
+                bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
+
+                bool cis =
+                    (group[inner]->core.tid == group[other]->core.tid);
+
+                bool facing =
+                    ((!rev_i && rev_ot && group[inner]->core.pos <= group[other]->core.pos) ||
+                     ( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos));
+
+                bool distance =
+                    (llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000);
+
+                if (cis && facing && distance)
+                    rescued = true;
+                else
+                    is_walk = true;
+            }
+        }
+
+    } else {
+
+        is_walk = true;
+    }
 }
-}        if (is_walk) {
+        if (is_walk) {
             ++qnameStats.WW;
 	    begin=end;
 	    continue;
