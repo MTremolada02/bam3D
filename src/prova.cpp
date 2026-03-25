@@ -721,7 +721,7 @@ void Runner::run() {
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
 				if((strcmp(bam_get_qname(records_vector[0]), bam_get_qname(records_vector[1])) != 0)) {
                                     std::cout<<"!"<<std::endl;
-
+				}
 			}else if(userInput.single_read_stats){
 				data_vector(records_vector,fp_in,bamHdr);
 			}
