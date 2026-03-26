@@ -154,6 +154,8 @@ public:
         void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
 	void processReads(Bam_record_vector &);
+	int Alignend(const bam1_t* b);	
+	int inter_align_gap_on_query(const bam1_t* left_seg, const bam1_t* right_seg);
 	void output();
 	void run();
     

@@ -90,6 +90,28 @@ uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi
 	return bases;
 }
 
+int Runner::Alignend(const bam1_t* b) {
+    const uint32_t* cigar = bam_get_cigar(b);
+    int qlen = bam_cigar2qlen(b->core.n_cigar, cigar);
+
+    int trailing = 0;
+    for (int i = (int)b->core.n_cigar - 1; i >= 0; --i) {
+        int op  = bam_cigar_op(cigar[i]);
+        int len = bam_cigar_oplen(cigar[i]);
+
+        if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) break;
+        if (op == BAM_CSOFT_CLIP || op == BAM_CINS) trailing += len;
+    }
+
+    return qlen - trailing;
+}
+
+int Runner::inter_align_gap_on_query(const bam1_t* left_seg, const bam1_t* right_seg) {
+    int left_end    = Alignend(left_seg);
+    int right_start = Alignstarts(right_seg);
+    return right_start - left_end;   // >0 gap, <0 overlap
+}
+
 void Runner::qname_stats(Bam_record_vector &group) {
     std::size_t begin = 0;
     std::size_t end = 0;
@@ -169,7 +191,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
         // -------------------------
         // 2) N/U/M
         // -------------------------
-        if (mapped_r1 == 0) a = Maptype::N;
+/*        if (mapped_r1 == 0) a = Maptype::N;
         else if ((mapped_r1 == 1 && group[primary_r1]->core.qual < 1) || primary_r1 == (std::size_t)-1 || secondary_r1 > 0)
             a = Maptype::M;
         else
@@ -180,11 +202,26 @@ void Runner::qname_stats(Bam_record_vector &group) {
             b = Maptype::M;
         else
             b = Maptype::U;
+*/
+if (mapped_r1 == 0)
+    a = Maptype::N;
+else if (primary_r1 == (std::size_t)-1 || secondary_r1 > 0 ||
+         (mapped_r1 == 1 && group[primary_r1]->core.qual < 1))
+    a = Maptype::M;
+else
+    a = Maptype::U;
 
+if (mapped_r2 == 0)
+    b = Maptype::N;
+else if (primary_r2 == (std::size_t)-1 || secondary_r2 > 0 ||
+         (mapped_r2 == 1 && group[primary_r2]->core.qual < 1))
+    b = Maptype::M;
+else
+    b = Maptype::U;
         // -------------------------
         // 3) WALK / RESCUE
         // -------------------------
-        if (total_read >= 3) {
+        if ((r1_side.size()+r2_side.size()) >= 3) {
 
             bool is_2plus1 =
                 (r1_side.size() == 2 && r2_side.size() <= 1) ||
@@ -211,17 +248,39 @@ void Runner::qname_stats(Bam_record_vector &group) {
 
             if (Alignstarts(group[inner]) > Alignstarts(group[outer]))
                 std::swap(inner, outer);
+		
+		static constexpr int MAX_INTER_ALIGN_GAP = 20;
+		Maptype other_type = R1_chim ? b : a;
 
             // --- rescue logic
             if (other == (std::size_t)-1) {
-                rescued = true;
-            } else {
+                rescued = true;//RN
+ /*           } else if (other_type == Maptype::N || other_type == Maptype::M) {
+    		// lato opposto non unico o nullo: pairtools lo rescue-a comunque
+    		rescued = true;
+*/
+	     } else {
 
-                if (is_overlapping(group[inner], group[outer])) {
-++pairStats.counter1;
-                    if (R1_chim) a = Maptype::M;
-                    else         b = Maptype::M;
-                } else {
+    		int qgap = inter_align_gap_on_query(group[inner], group[outer]);
+    		bool inner_bad  = (group[inner]->core.qual < 1);
+    		bool inner_null = (qgap > MAX_INTER_ALIGN_GAP);
+
+    		// se inner è cattivo o "null", lo ignoro e uso outer
+    		std::size_t left = (inner_bad || inner_null) ? outer : inner;
+
+    		if (other_type == Maptype::N || other_type == Maptype::M) {
+        	// lato opposto nullo o multi: rescue diretto
+        	rescued = true;
+
+	    	} else {
+		//other unico = test geometrico
+		
+
+//                if (is_overlapping(group[inner], group[outer])) {
+//++pairStats.counter1;
+  //                  if (R1_chim) a = Maptype::M;
+    //                else         b = Maptype::M;
+      //          } else {
 
                     bool inner_bad = (group[inner]->core.qual < 1);
                     std::size_t left = inner_bad ? outer : inner;
