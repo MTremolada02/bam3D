@@ -85,6 +85,24 @@ struct QnameStats {
 	uint64_t NU=0;
 	uint64_t NR=0;
 	uint64_t NN=0;
+
+uint64_t dbg_unresolved = 0;
+uint64_t dbg_not_2plus1 = 0;
+uint64_t dbg_outer_bad = 0;
+uint64_t dbg_other_no_index = 0;
+uint64_t dbg_other_type_N = 0;
+uint64_t dbg_other_type_M = 0;
+uint64_t dbg_ignore_inner = 0;
+uint64_t dbg_geom_pass = 0;
+uint64_t dbg_geom_fail = 0;
+uint64_t dbg_gap_large = 0;
+uint64_t dbg_outer_bad_otherN = 0;
+uint64_t dbg_outer_bad_otherM = 0;
+uint64_t dbg_outer_bad_otherU = 0;
+uint64_t fallback = 0;
+uint64_t dbg_not3 =0;
+uint64_t dbg_unmapped =0;
+uint64_t dbg_outer_noindex = 0;
 };
 
 class Bam_record_vector {

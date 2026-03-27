@@ -17,7 +17,7 @@
 
 #include "functions.h"
 #include "global.h"
-#include "prova.hpp"
+#include "def.hpp"
 
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
@@ -135,7 +135,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
     bool R2_chim = false;
     std::size_t inner = 0, outer = 0, other = 0;
 
-	std::size_t MAX_INTER_ALIGN_GAP=20;
+    std::size_t MAX_INTER_ALIGN_GAP=20;
 
     Maptype a = Maptype::N;
     Maptype b = Maptype::N;
@@ -217,8 +217,13 @@ void Runner::qname_stats(Bam_record_vector &group) {
         if (r1_mapped.size() == 0) {
             a = Maptype::N;
         }
+	else if (secondary_r1 > 0) {
+	    a = Maptype::M;
+        }
+	else if (r1_all.size() >= 2) {
+            r1_unresolved = true;
+        }
         else if (primary_r1 == (std::size_t)-1 ||
-                secondary_r1 > 0 ||
                 group[primary_r1]->core.qual < 1) {
             a = Maptype::M;
         }
@@ -234,8 +239,13 @@ void Runner::qname_stats(Bam_record_vector &group) {
         if (r2_mapped.size() == 0) {
             b = Maptype::N;
         }
+	else if (secondary_r2 > 0) {
+            b = Maptype::M;
+        }
+        else if (r2_all.size() >= 2) {
+            r2_unresolved = true;
+        }
         else if (primary_r2 == (std::size_t)-1 ||
-                secondary_r2 > 0 ||
                 group[primary_r2]->core.qual < 1) {
             b = Maptype::M;
         }
@@ -251,13 +261,14 @@ void Runner::qname_stats(Bam_record_vector &group) {
         // -------------------------
 
         if (r1_unresolved || r2_unresolved){
-
+++qnameStats.dbg_unresolved;
            std::size_t total_all = r1_all.size() + r2_all.size();
 		   const std::size_t NO_INDEX = static_cast<std::size_t>(-1);
 			inner = outer = other = NO_INDEX;
 
             // se non è il classico 2+1, lo mando in WW
             if (total_all != 3) {
+++qnameStats.dbg_not3;
                 ++qnameStats.WW;
                 begin = end;
                 continue;
@@ -269,7 +280,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
                 (r2_all.size() == 2 && r1_all.size() == 1);
 
             if (!is_2plus1) {
-
+++qnameStats.dbg_not_2plus1;
                 ++qnameStats.WW;
                 begin = end;
                 continue;
@@ -311,6 +322,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
 				}
 				// Caso C: nessun mapped sul lato chimerico -> non posso rescueare
 				else {
+++qnameStats.dbg_unmapped;
 					++qnameStats.WW;
 					begin = end;
 					continue;
@@ -333,6 +345,11 @@ void Runner::qname_stats(Bam_record_vector &group) {
 				bool outer_bad = outer_missing || (group[outer]->core.qual < 1);
 
 				if (outer_bad) {
+if(outer_missing){++qnameStats.dbg_outer_noindex;}
+++qnameStats.dbg_outer_bad;
+ if (other == NO_INDEX || other_type == Maptype::N) ++qnameStats.dbg_outer_bad_otherN;
+    else if (other_type == Maptype::M) ++qnameStats.dbg_outer_bad_otherM;
+    else if (other_type == Maptype::U) ++qnameStats.dbg_outer_bad_otherU;
 					++qnameStats.WW;
 					begin = end;
 					continue;
@@ -346,13 +363,16 @@ void Runner::qname_stats(Bam_record_vector &group) {
 				bool inner_null_like = false;
 				if (!inner_missing) {
 					int qgap = inter_align_gap_on_query(group[inner], group[outer]);
-					inner_null_like = (qgap < MAX_INTER_ALIGN_GAP); //così prende il gap piccolo (e ache l'oevrlap)
+					inner_null_like = (qgap <  MAX_INTER_ALIGN_GAP); //così prende il gap piccolo (e ache l'oevrlap)!!!!!!!!!!!!!!!!!!!!!!
+ if(inner_null_like){++qnameStats.dbg_gap_large;}
 				}
 
 				bool ignore_inner = inner_bad || inner_null_like;
 
 				// 3) se OTHER è N o M -> rescue diretto
 				if (other == NO_INDEX || other_type == Maptype::N) {
+++qnameStats.dbg_other_no_index;
+++qnameStats.dbg_other_type_N;
 					rescued = true;
 					if (R1_chim) {
 						a = Maptype::R;
@@ -363,6 +383,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
 					}
 				}
 				else if (other_type == Maptype::M) {
+++qnameStats.dbg_other_type_M;
 					rescued = true;
 					if (R1_chim) {
 						a = Maptype::R;
@@ -375,6 +396,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
 
 				// 4) se OTHER è U e INNER è ignorabile -> rescue diretto
 				else if (other_type == Maptype::U && ignore_inner) {
+++qnameStats.dbg_ignore_inner;
 					rescued = true;
 					if (R1_chim) a = Maptype::R;
 					else         b = Maptype::R;
@@ -397,15 +419,18 @@ void Runner::qname_stats(Bam_record_vector &group) {
 						(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000);
 
 					if (cis && facing && distance) {
+++qnameStats.dbg_geom_pass;
 						rescued = true;
 						if (R1_chim) a = Maptype::R;
 						else         b = Maptype::R;
 					} else {
 						++qnameStats.WW;
+++qnameStats.dbg_geom_fail;
 						begin = end;
 						continue;
 					}
 				} else {// 6) fallback: qualunque caso non coperto -> WW
+++qnameStats.fallback;
 					++qnameStats.WW;
 					begin = end;
 					continue;
@@ -780,6 +805,23 @@ void Runner::output(){
 		std::cout<<"total read"<<tot_qname_stats<<std::endl;
 		std::cout<<"funzione di overlapping"<<pairStats.counter1<<std::endl;
 
+		std::cout << "unresolved: " << qnameStats.dbg_unresolved << "\n";
+std::cout << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
+std::cout << "not 3"<<  qnameStats.dbg_not3 << std::endl;
+std::cout << "no mapped chim side"<<  qnameStats.dbg_unmapped << std::endl;
+std::cout << "outer_bad->WW: " << qnameStats.dbg_outer_bad << "\n";
+std::cout << "outer noindex (not possible)"<<  qnameStats.dbg_outer_noindex << std::endl;
+std::cout << "outer bad other M"<<  qnameStats.dbg_outer_bad_otherM << std::endl;
+std::cout << "outer bad other U"<<  qnameStats.dbg_outer_bad_otherU << std::endl;
+std::cout << "outer bad other N"<<  qnameStats.dbg_outer_bad_otherN << std::endl;
+std::cout << "other==NO_INDEX: " << qnameStats.dbg_other_no_index << "\n";
+std::cout << "other_type==N: " << qnameStats.dbg_other_type_N << "\n";
+std::cout << "other_type==M: " << qnameStats.dbg_other_type_M << "\n";
+std::cout << "ignore_inner->R: " << qnameStats.dbg_ignore_inner << "\n";
+std::cout << "ignore inner per gap<20"<<  qnameStats.dbg_gap_large << std::endl;
+std::cout << "geom pass->R: " << qnameStats.dbg_geom_pass << "\n";
+std::cout << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
+std::cout << "fall back: " << qnameStats.fallback << "\n";
 	}
 
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
