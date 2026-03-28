@@ -20,6 +20,11 @@ struct UserInputBam3D : UserInput { // additional input
 
 };
 
+struct Graph {
+	std::unordered_map<uint64_t, uint64_t> binned_dist_count;
+	uint64_t bin_size = 100;
+};
+
 struct ReadStats {
     uint64_t readN  = 0;
     uint64_t qc_fail = 0;
@@ -149,6 +154,7 @@ class Runner {
 	ReadStats readStats;
 	PairStats pairStats;
 	QnameStats qnameStats;
+	Graph graph;
 
 private:
 
@@ -159,6 +165,9 @@ private:
     
 public:
     void loadInput(UserInputBam3D userInput);
+	void write_section_header(std::ofstream&, const std::string&,const std::string&);
+	void write_all_stats_file(const std::string&);
+	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&, uint64_t);
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);

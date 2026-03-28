@@ -23,7 +23,65 @@ void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
 
-bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { //chi ha deciso 20??
+void Runner::write_section_header(std::ofstream& myfile,
+                                  const std::string& section_name,
+                                  const std::string& columns_line)
+{
+    myfile << "\n#" << section_name << "\n";
+    myfile << columns_line << "\n";
+}
+
+void Runner::write_all_stats_file(const std::string& out_path)
+{
+    std::ofstream myfile(out_path, std::ios::out);
+
+    if (!myfile.is_open()) {
+        std::cout << "cannot open " << out_path << std::endl;
+        return;
+    }
+
+	if (!graph.binned_dist_count.empty()) {
+        write_binned_map(myfile,
+        "BINNED_DISTANCE",
+        graph.binned_dist_count,
+        graph.bin_size);
+    }
+
+
+    myfile.close();
+}
+
+//GRAPHS
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Runner::write_binned_map(std::ofstream& myfile,
+                              const std::string& section_name,
+                              const std::unordered_map<uint64_t, uint64_t>& binned_map,
+                              uint64_t bin_size)
+{
+    write_section_header(myfile, section_name, "bin_start\tbin_end\tcount");
+
+    std::vector<std::pair<uint64_t, uint64_t>> entries(binned_map.begin(), binned_map.end());
+
+    std::sort(entries.begin(), entries.end(),
+              [](const auto& a, const auto& b) {
+                  return a.first < b.first;
+              });
+
+    for (const auto& kv : entries) {
+        uint64_t bin_index = kv.first;
+        uint64_t count = kv.second;
+
+        uint64_t bin_start = bin_index * bin_size;
+        uint64_t bin_end   = bin_start + bin_size - 1;
+
+        myfile << bin_start << "\t" << bin_end << "\t" << count << "\n";
+    }
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { 
     auto get_query_bounds = [](bam1_t *rec, int32_t &q_start, int32_t &q_end) {
         uint32_t *cigar = bam_get_cigar(rec);
         q_start = 0;
@@ -55,26 +113,8 @@ bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { //chi ha d
 
     // Se l'overlap è maggiore della soglia, sono sovrapposti (quindi NON è una chimera pulita)
     return (overlap_len > max_overlap);
-}
+}*/
 
-/*
-uint64_t Runner::cigar_mapped_bases(const bam1_t* b) {
-    const uint32_t* cigar = bam_get_cigar(b);
-    uint64_t len = 0;
-    for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
-        uint32_t op = bam_cigar_op(cigar[i]);
-        uint32_t oplen = bam_cigar_oplen(cigar[i]);
-
-        if (op == BAM_CMATCH || op == BAM_CINS ||
-            op == BAM_CEQUAL || op == BAM_CDIFF) {
-            len += oplen;
-        }
-        // ESCLUDE esplicitamente BAM_CSOFT_CLIP e BAM_CDEL, BAM_CREF_SKIP, ecc.
-    }
-    return len;
-}
-*/
-//se aggiungo I ottengo alignend non start
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
 	const uint32_t* cigar = bam_get_cigar(b);
@@ -471,91 +511,7 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
         begin = end;
     }
 }
-/*	
-void Runner::estimate_insert_stats()
-{
-    uint32_t peak_bin = 0;
-    uint64_t peak_count = 0;
 
-    for (const auto& kv : readStats.insert_hist) {
-        if (kv.second > peak_count) {
-            peak_count = kv.second;
-            peak_bin = kv.first;
-        }
-    }
-
-    uint32_t window = 10; // ±10 bin
-    uint32_t low_bin  = (peak_bin > window) ? peak_bin - window : 0;
-    uint32_t high_bin = peak_bin + window;
-
-    long double sum = 0.0;
-    long double sumsq = 0.0;
-    uint64_t n = 0;
-
-    for (const auto& kv : readStats.insert_hist) {
-
-        uint32_t bin = kv.first;
-        uint64_t count = kv.second;
-
-        if (bin < low_bin || bin > high_bin)
-            continue;
-
-        long double x = (bin + 0.5L) * readStats.bin_size;
-
-        sum   += x * count;
-        sumsq += x * x * count;
-        n     += count;
-    }
-
-    if (n == 0) {
-        readStats.mean_insert = 0;
-        readStats.sd_insert = 0;
-        return;
-    }
-
-    long double mean = sum / n;
-    long double var  = (sumsq / n) - mean * mean;
-
-    readStats.mean_insert = mean;
-    readStats.sd_insert = std::sqrt(var);
-}
-*/
-/*
-void Runner::estimate_insert_stats() {
-    uint64_t total = 0;
-    for (const auto& kv : readStats.insert_hist) {
-        total += kv.second;
-    }
-
-    if (total == 0) {
-        readStats.mean_insert = 0.0L;
-        readStats.quadratic_mean = 0.0L;
-        return;
-    }
-
-    const long double bulk_fraction = 0.99L;
-
-    uint64_t bulk_count = 0;
-    long double sum = 0.0L;
-    long double sumsq = 0.0L;
-
-    for (const auto& kv : readStats.insert_hist) {
-        uint32_t isize = kv.first;
-        uint64_t count = kv.second;
-
-        bulk_count += count;
-        sum += (long double)isize * count;
-        sumsq += (long double)isize * isize * count;
-
-        if ((long double)bulk_count / (long double)total > bulk_fraction) {
-            break;
-        }
-    }
-
-    readStats.mean_insert = sum / (long double)bulk_count;
-    readStats.quadratic_mean = sumsq / (long double)bulk_count;
-}
-*/
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
     long double xk = std::abs((long double)bamdata->core.isize);  // TEN dLel record
     return (xk / k) + ((k - 1) / (long double)k) * prev_mean;									
@@ -660,10 +616,6 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 
 void Runner::processReads(Bam_record_vector &vectorbox) {
 	if(userInput.single_read_stats || userInput.hist_global || userInput.hist_by_chrom){
-		//uint64_t av_counter=0;
-		
-		//uint64_t mismatched_bases=0;
-		//uint64_t total_base=0;
 
 		uint32_t chrom=0;
 		uint64_t dist=0;
@@ -673,19 +625,6 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 					pairStats.good_read1=false;
 					pairStats.good_read2=false;
 					++readStats.readN;
-				/*		
-						
-					 if ((vectorbox[i]->core.flag & BAM_FPAIRED) &&
-        !(vectorbox[i]->core.flag & BAM_FUNMAP) &&
-        !(vectorbox[i]->core.flag & BAM_FMUNMAP) &&
-        !(vectorbox[i]->core.flag & BAM_FSECONDARY) &&
-        !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) &&
-        vectorbox[i]->core.isize > 0)   // una sola read per coppia
-    {
-        uint32_t x = std::abs(vectorbox[i]->core.isize);
-        readStats.insert_hist[x]++;
-    }					
-*/
 	
 					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) && !(vectorbox[i]->core.flag & BAM_FSECONDARY) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
 					flag_inspector(vectorbox[i]);
@@ -704,13 +643,6 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
 							
 						
-						/*
-						uint32_t x = std::abs(vectorbox[i]->core.isize);
-						if(x>500){
-    						uint32_t bin = x / readStats.bin_size;
-
-    						++readStats.insert_hist[bin];
-						}*/
 						}
 						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
 							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
@@ -722,16 +654,19 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
 							++chrom_dist_count[chrom][dist];
 						}
+						
+						//binning_distance
+						uint64_t bin_index = dist / graph.bin_size;
+    					++graph.binned_dist_count[bin_index];
 					}
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
 			      // if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
-                                 		uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
+                        uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
 						uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
 
 						readStats.mismatched_bases += nm;  
 						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
-						//uint64_t aligned = cigar_mapped_bases(vectorbox[i]);//elimina gli S
 						readStats.total_mapped_base += aligned;
 					} 
 			}
@@ -925,7 +860,7 @@ void Runner::run() {
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
     		
-
+		write_all_stats_file("all_stats.tsv");//!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		output();
 		
 		bam_hdr_destroy(bamHdr);
