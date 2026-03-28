@@ -22,7 +22,7 @@ struct UserInputBam3D : UserInput { // additional input
 
 struct Graph {
 	std::unordered_map<uint64_t, uint64_t> binned_dist_count;
-	uint64_t bin_size = 100;
+	double log_bin_factor = 1.25892541179;   // 10 bin per decade
 };
 
 struct ReadStats {
@@ -167,7 +167,8 @@ public:
     void loadInput(UserInputBam3D userInput);
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
 	void write_all_stats_file(const std::string&);
-	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&, uint64_t);
+	void write_binned_map(std::ofstream&, const std::string&);
+	void update_log_binned_distance(uint64_t );
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);

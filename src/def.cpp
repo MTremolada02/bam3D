@@ -8,6 +8,7 @@
 #include <stack>
 #include <iostream>
 #include <fstream>
+#include <cmath>
 #include <unordered_map>
 #include <map>
 #include <algorithm>
@@ -23,9 +24,7 @@ void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
 
-void Runner::write_section_header(std::ofstream& myfile,
-                                  const std::string& section_name,
-                                  const std::string& columns_line)
+void Runner::write_section_header(std::ofstream& myfile, const std::string& section_name, const std::string& columns_line)
 {
     myfile << "\n#" << section_name << "\n";
     myfile << columns_line << "\n";
@@ -40,27 +39,25 @@ void Runner::write_all_stats_file(const std::string& out_path)
         return;
     }
 
-	if (!graph.binned_dist_count.empty()) {
-        write_binned_map(myfile,
-        "BINNED_DISTANCE",
-        graph.binned_dist_count,
-        graph.bin_size);
+	 if (!graph.binned_dist_count.empty()) {
+        write_binned_map(myfile, "BINNED_DISTANCE");
     }
 
 
     myfile.close();
 }
 
+
 //GRAPHS
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Runner::write_binned_map(std::ofstream& myfile,
-                              const std::string& section_name,
-                              const std::unordered_map<uint64_t, uint64_t>& binned_map,
-                              uint64_t bin_size)
+void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_name)
 {
     write_section_header(myfile, section_name, "bin_start\tbin_end\tcount");
 
-    std::vector<std::pair<uint64_t, uint64_t>> entries(binned_map.begin(), binned_map.end());
+    std::vector<std::pair<uint32_t, uint64_t>> entries(
+        graph.binned_dist_count.begin(),
+        graph.binned_dist_count.end()
+    );
 
     std::sort(entries.begin(), entries.end(),
               [](const auto& a, const auto& b) {
@@ -68,18 +65,33 @@ void Runner::write_binned_map(std::ofstream& myfile,
               });
 
     for (const auto& kv : entries) {
-        uint64_t bin_index = kv.first;
+        uint32_t bin_index = kv.first;
         uint64_t count = kv.second;
 
-        uint64_t bin_start = bin_index * bin_size;
-        uint64_t bin_end   = bin_start + bin_size - 1;
+        uint64_t bin_start = static_cast<uint64_t>(
+            std::floor(std::pow(graph.log_bin_factor, bin_index))
+        );
+        uint64_t bin_end = static_cast<uint64_t>(
+            std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
+        ) - 1;
+
+        if (bin_start < 1) bin_start = 1;
+        if (bin_end < bin_start) bin_end = bin_start;
 
         myfile << bin_start << "\t" << bin_end << "\t" << count << "\n";
     }
 }
 
+void Runner::update_log_binned_distance(uint64_t dist)
+{
+    if (dist == 0) return;
 
+    uint32_t bin_index = static_cast<uint32_t>(
+        std::floor(std::log((double)dist) / std::log(graph.log_bin_factor))
+    );
 
+    ++graph.binned_dist_count[bin_index];
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /*bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { 
     auto get_query_bounds = [](bam1_t *rec, int32_t &q_start, int32_t &q_end) {
@@ -622,46 +634,45 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 
 		if(userInput.single_read_stats){ 
 			for(int i=0;i<vectorbox.size();++i){
-					pairStats.good_read1=false;
-					pairStats.good_read2=false;
-					++readStats.readN;
+				pairStats.good_read1=false;
+				pairStats.good_read2=false;
+				++readStats.readN;
 	
-					if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) && !(vectorbox[i]->core.flag & BAM_FSECONDARY) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
-					flag_inspector(vectorbox[i]);
+				if (!(vectorbox[i]->core.flag & BAM_FUNMAP) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY) && !(vectorbox[i]->core.flag & BAM_FSECONDARY) && vectorbox[i]->core.qual==0) {++readStats.mapQ0;}
+				flag_inspector(vectorbox[i]);
  
-					if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
-						++pairStats.sameCr;
-						if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
-							if(std::abs((long double)vectorbox[i]->core.isize)<10000){
-								++readStats.avf_counter;
-								readStats.mean_insert_filtr = update_mean_tlen(readStats.mean_insert_filtr, readStats.avf_counter, vectorbox[i]);
-								readStats.quadratic_mean_filtr=update_quadratic_mean_tlen(readStats.quadratic_mean_filtr,readStats.avf_counter, vectorbox[i]);
-								}
-							++readStats.av_counter;			
-							readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
-							//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
-							readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
-							
+				if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
+					++pairStats.sameCr;
+					if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
+						if(std::abs((long double)vectorbox[i]->core.isize)<10000){
+							++readStats.avf_counter;
+							readStats.mean_insert_filtr = update_mean_tlen(readStats.mean_insert_filtr, readStats.avf_counter, vectorbox[i]);
+							readStats.quadratic_mean_filtr=update_quadratic_mean_tlen(readStats.quadratic_mean_filtr,readStats.avf_counter, vectorbox[i]);
+							}
+						++readStats.av_counter;			
+						readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
+						//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
+						readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
 						
-						}
-						if(userInput.hist_global){ //HISTO_GLOBAL_DATA
-							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
-							++global_dist_count[dist]; 
-						}
+					}
+
+					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
 					
-						if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
-							chrom=vectorbox[i]->core.tid;
-							dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos);
-							++chrom_dist_count[chrom][dist];
-						}
+					if(userInput.hist_global){ //HISTO_GLOBAL_DATA
+						++global_dist_count[dist]; 
+					}
+					
+					if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
+						chrom=vectorbox[i]->core.tid;
+						++chrom_dist_count[chrom][dist];
+					}
 						
-						//binning_distance
-						uint64_t bin_index = dist / graph.bin_size;
-    					++graph.binned_dist_count[bin_index];
+					if(pairStats.good_read1 ){ 
+						update_log_binned_distance(dist);
 					}
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
-			      // if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
+			      	// if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
                         uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
 						uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
 
@@ -669,18 +680,16 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
 						readStats.total_mapped_base += aligned;
 					} 
-			}
+				}
 
-			if ((readStats.readN % 2) == 0) {
-				pairStats.pairN=readStats.readN/2;
-			} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
-			//readStats.error_rate=error_rate(mismatched_bases,total_base);
+				if ((readStats.readN % 2) == 0) {
+					pairStats.pairN=readStats.readN/2;
+				} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
+				//readStats.error_rate=error_rate(mismatched_bases,total_base);
+			}
 		}
-	}
-	if(userInput.pair_read_stats){
-//std::cout<<"entriamo nel pair"<<std::endl;
- 
-		qname_stats(vectorbox);
+
+		if(userInput.pair_read_stats) qname_stats(vectorbox);
 	}
 }
 
@@ -811,6 +820,7 @@ void Runner::run() {
 
 		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
 		chrom_dist_count.clear();
+		graph.binned_dist_count.clear();//!!!!!!!!!!!non volgio sia comulativo tra file diversi COME FACCIO SE OGNI FILE OUTPUT MI SOVRASCRIVE QUELLO PERIMA PER PIÙ FILE
 
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
@@ -846,9 +856,7 @@ void Runner::run() {
 		while(!(records_vector.is_file_end())){ 
 			if(userInput.pair_read_stats){
 				data_vector(records_vector, bridge_read,first, fp_in, bamHdr);
-				if((strcmp(bam_get_qname(records_vector[0]), bam_get_qname(records_vector[1])) != 0)) {
-                                    std::cout<<"!"<<std::endl;
-				}
+				if((strcmp(bam_get_qname(records_vector[0]), bam_get_qname(records_vector[1])) != 0)) std::cout<<"!"<<std::endl;
 			}else if(userInput.single_read_stats){
 				data_vector(records_vector,fp_in,bamHdr);
 			}
