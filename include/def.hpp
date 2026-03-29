@@ -22,7 +22,8 @@ struct UserInputBam3D : UserInput { // additional input
 
 struct Graph {
 	std::unordered_map<uint64_t, uint64_t> binned_dist_count;
-	double log_bin_factor = 1.25892541179;   // 10 bin per decade
+	//double log_bin_factor = 1.25892541179;   // 10 bin per decade: pow(10.0, 1.0 / 10.0)
+	double log_bin_factor = std::pow(10.0, 1.0 / 8.0);
 };
 
 struct ReadStats {

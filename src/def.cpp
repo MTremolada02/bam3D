@@ -182,7 +182,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
     bool r1_unresolved = false;
     bool r2_unresolved = false;
     bool rescued = false;
-    //bool is_walk = false;
+    bool is_dupl = false;
     bool R1_chim = false;
     bool R2_chim = false;
     std::size_t inner = 0, outer = 0, other = 0;
@@ -213,7 +213,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
         r1_unresolved = false;
         r2_unresolved = false;
         rescued = false;
-        //is_walk = false;
+        is_dupl = false;
         R1_chim = false;
         R2_chim = false;
 
@@ -225,9 +225,11 @@ void Runner::qname_stats(Bam_record_vector &group) {
         // -------------------------
         //total_read = end - begin;
 
-        for (std::size_t j = begin; j < end; ++j) {
+        for (std::size_t j = begin; j < end; ++j) {	
 
             auto flag = group[j]->core.flag;
+
+	    if (flag & BAM_FDUP) is_dupl=true;   
 
             if (flag & BAM_FSECONDARY) {
 
@@ -257,6 +259,12 @@ void Runner::qname_stats(Bam_record_vector &group) {
                 }
             }
         }
+
+	if(is_dupl) {
+	  ++qnameStats.DD;
+	  begin=end;
+          continue;
+	}
 
         bool r1_has_null = (r1_all.size() > r1_mapped.size());
         bool r2_has_null = (r2_all.size() > r2_mapped.size());
