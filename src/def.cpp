@@ -43,6 +43,8 @@ void Runner::write_all_stats_file(const std::string& out_path)
         write_binned_map(myfile, "BINNED_DISTANCE");
     }
 
+	write_pair_types_section(myfile);
+
 
     myfile.close();
 }
@@ -92,6 +94,47 @@ void Runner::update_log_binned_distance(uint64_t dist)
 
     ++graph.binned_dist_count[bin_index];
 }
+
+void Runner::write_pair_types_section(std::ofstream& myfile)
+{
+    write_section_header(
+        myfile,
+        "PAIR_TYPES",
+        "run\tUU\tRU\tUR\tWW\tDD\tMU\tMR\tMM\tNM\tNU\tNR\tNN\tpUU\tpRU\tpUR\tpWW\tpDD\tpMU\tpMR\tpMM\tpNM\tpNU\tpNR\tpNN"
+    );
+
+    const double total_pairs =
+        qnameStats.UU + qnameStats.RU + qnameStats.UR + qnameStats.WW +
+        qnameStats.DD + qnameStats.MU + qnameStats.MR + qnameStats.MM +
+        qnameStats.NM + qnameStats.NU + qnameStats.NR + qnameStats.NN;
+
+    myfile << "run1" << "\t"
+           << qnameStats.UU << "\t"
+           << qnameStats.RU << "\t"
+           << qnameStats.UR << "\t"
+           << qnameStats.WW << "\t"
+           << qnameStats.DD << "\t"
+           << qnameStats.MU << "\t"
+           << qnameStats.MR << "\t"
+           << qnameStats.MM << "\t"
+           << qnameStats.NM << "\t"
+           << qnameStats.NU << "\t"
+           << qnameStats.NR << "\t"
+           << qnameStats.NN << "\t"
+           << percentage(qnameStats.UU, total_pairs) << "\t"
+           << percentage(qnameStats.RU, total_pairs) << "\t"
+           << percentage(qnameStats.UR, total_pairs) << "\t"
+           << percentage(qnameStats.WW, total_pairs) << "\t"
+           << percentage(qnameStats.DD, total_pairs) << "\t"
+           << percentage(qnameStats.MU, total_pairs) << "\t"
+           << percentage(qnameStats.MR, total_pairs) << "\t"
+           << percentage(qnameStats.MM, total_pairs) << "\t"
+           << percentage(qnameStats.NM, total_pairs) << "\t"
+           << percentage(qnameStats.NU, total_pairs) << "\t"
+           << percentage(qnameStats.NR, total_pairs) << "\t"
+           << percentage(qnameStats.NN, total_pairs) << "\n";
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /*bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { 
     auto get_query_bounds = [](bam1_t *rec, int32_t &q_start, int32_t &q_end) {
@@ -530,6 +573,12 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         begin = end;
     }
+}
+
+double Runner::percentage(std::size_t value, double total)
+{
+    if (total == 0.0) return 0.0;
+    return 100.0 * static_cast<double>(value) / total;
 }
 
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
