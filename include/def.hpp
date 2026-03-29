@@ -21,9 +21,14 @@ struct UserInputBam3D : UserInput { // additional input
 };
 
 struct Graph {
-	std::unordered_map<uint64_t, uint64_t> binned_dist_count;
-	//double log_bin_factor = 1.25892541179;   // 10 bin per decade: pow(10.0, 1.0 / 10.0)
-	double log_bin_factor = std::pow(10.0, 1.0 / 10.0);
+	std::unordered_map<uint64_t, uint64_t> Ps_binned_dist_count;
+	std::unordered_map<uint64_t, uint64_t> ff_binned_dist_count; //forse un po' grande uint_64 
+	std::unordered_map<uint64_t, uint64_t> fr_binned_dist_count;
+	std::unordered_map<uint64_t, uint64_t> rf_binned_dist_count;
+	std::unordered_map<uint64_t, uint64_t> rr_binned_dist_count; 
+
+	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin per decade: pow(10.0, 1.0 / 10.0)
+	double inv_log_bin_factor = 1.0 / std::log(log_bin_factor);
 };
 
 struct ReadStats {
@@ -168,9 +173,9 @@ public:
     void loadInput(UserInputBam3D userInput);
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
 	void write_all_stats_file(const std::string&);
-	void write_binned_map(std::ofstream&, const std::string&);
+	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
 	void write_pair_types_section(std::ofstream&);
-	void update_log_binned_distance(uint64_t );
+	void update_log_binned_distance(uint64_t, std::unordered_map<uint64_t, uint64_t>&);
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	double percentage(std::size_t, double);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);

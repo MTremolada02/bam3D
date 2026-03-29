@@ -39,12 +39,30 @@ void Runner::write_all_stats_file(const std::string& out_path)
         return;
     }
 
-	 if (!graph.binned_dist_count.empty()) {
-        write_binned_map(myfile, "BINNED_DISTANCE");
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
     }
 
-	write_pair_types_section(myfile);
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
+    }
 
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
+    }
+
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
+    }
+
+
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
+    }
+
+	if(userInput.pair_read_stats) { 
+		write_pair_types_section(myfile);
+	}
 
     myfile.close();
 }
@@ -52,14 +70,11 @@ void Runner::write_all_stats_file(const std::string& out_path)
 
 //GRAPHS
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_name)
+void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_name, const std::unordered_map<uint64_t, uint64_t>& data_map)
 {
     write_section_header(myfile, section_name, "bin_start\tbin_end\tcount");
 
-    std::vector<std::pair<uint32_t, uint64_t>> entries(
-        graph.binned_dist_count.begin(),
-        graph.binned_dist_count.end()
-    );
+    std::vector<std::pair<uint32_t, uint64_t>> entries(data_map.begin(), data_map.end());
 
     std::sort(entries.begin(), entries.end(),
               [](const auto& a, const auto& b) {
@@ -70,12 +85,8 @@ void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_
         uint32_t bin_index = kv.first;
         uint64_t count = kv.second;
 
-        uint64_t bin_start = static_cast<uint64_t>(
-            std::floor(std::pow(graph.log_bin_factor, bin_index))
-        );
-        uint64_t bin_end = static_cast<uint64_t>(
-            std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
-        ) - 1;
+        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_index)));
+        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_index + 1))) - 1;
 
         if (bin_start < 1) bin_start = 1;
         if (bin_end < bin_start) bin_end = bin_start;
@@ -84,15 +95,15 @@ void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_
     }
 }
 
-void Runner::update_log_binned_distance(uint64_t dist)
+void Runner::update_log_binned_distance(uint64_t dist, std::unordered_map<uint64_t, uint64_t>& specific_map)
 {
     if (dist == 0) return;
 
     uint32_t bin_index = static_cast<uint32_t>(
-        std::floor(std::log((double)dist) / std::log(graph.log_bin_factor))
+        std::floor(std::log((double)dist) * graph.inv_log_bin_factor) //std::log((double)dist): Trasforma la distanza in una scala logaritmica, / std::log(factor) (o * inv_factor): Serve a decidere la "larghezza" dei tuoi scalini. Se il factor è piccolo (es. 1.01), avrai tantissimi scalini stretti
     );
 
-    ++graph.binned_dist_count[bin_index];
+    ++specific_map[bin_index];
 }
 
 void Runner::write_pair_types_section(std::ofstream& myfile)
@@ -136,39 +147,6 @@ void Runner::write_pair_types_section(std::ofstream& myfile)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/*bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { 
-    auto get_query_bounds = [](bam1_t *rec, int32_t &q_start, int32_t &q_end) {
-        uint32_t *cigar = bam_get_cigar(rec);
-        q_start = 0;
-        q_end = 0;
-        
-        // Il "Soft Clipping" (op 4) all'inizio ci dice dove inizia il match sulla read
-        if (bam_cigar_op(cigar[0]) == BAM_CSOFT_CLIP) {
-            q_start = bam_cigar_oplen(cigar[0]);
-        }
-        
-        // Calcoliamo la fine sommando la lunghezza consumata sulla query dal CIGAR
-        int32_t query_consumed = 0;
-        for (uint32_t i = 0; i < rec->core.n_cigar; ++i) {
-            if (bam_cigar_type(bam_cigar_op(cigar[i])) & 1) { // Consuma query (M, I, S)
-                query_consumed += bam_cigar_oplen(cigar[i]);
-            }
-        }
-        q_end = q_start + query_consumed;
-    };
-
-    int32_t start_a, end_a, start_b, end_b;
-    get_query_bounds(a, start_a, end_a);
-    get_query_bounds(b, start_b, end_b);
-
-    // Calcolo dell'intersezione tra i due intervalli [start, end]
-    int32_t overlap_start = std::max(start_a, start_b);
-    int32_t overlap_end = std::min(end_a, end_b);
-    int32_t overlap_len = overlap_end - overlap_start;
-
-    // Se l'overlap è maggiore della soglia, sono sovrapposti (quindi NON è una chimera pulita)
-    return (overlap_len > max_overlap);
-}*/
 
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
@@ -725,7 +703,16 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 					}
 						
 					if(pairStats.good_read1 ){ 
-						update_log_binned_distance(dist);
+						bool r1_rev = (vectorbox[i]->core.flag & BAM_FREVERSE);//POTREI USARLI IN TUTTA
+						bool r2_rev = (vectorbox[i]->core.flag & BAM_FMREVERSE);
+
+						update_log_binned_distance(dist,graph.Ps_binned_dist_count); 
+
+						if      (!r1_rev && r2_rev)  update_log_binned_distance(dist, graph.fr_binned_dist_count);// Forward-Reverse (Inward) ---> <---
+						else if (r1_rev && !r2_rev)  update_log_binned_distance(dist, graph.rf_binned_dist_count);// Reverse-Forward (Outward) <--- --->
+						else if (!r1_rev && !r2_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);// Forward-Forward (Same-strand) ----> --->
+						else if (r1_rev && r2_rev) 	 update_log_binned_distance(dist, graph.rr_binned_dist_count);// Reverse-Reverse (Same-strand) <---- <----
+											
 					}
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
@@ -877,7 +864,11 @@ void Runner::run() {
 
 		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
 		chrom_dist_count.clear();
-		graph.binned_dist_count.clear();//!!!!!!!!!!!non volgio sia comulativo tra file diversi COME FACCIO SE OGNI FILE OUTPUT MI SOVRASCRIVE QUELLO PERIMA PER PIÙ FILE
+		graph.Ps_binned_dist_count.clear();//!!!!!!!!!!!non volgio sia comulativo tra file diversi COME FACCIO SE OGNI FILE OUTPUT MI SOVRASCRIVE QUELLO PERIMA PER PIÙ FILE
+		graph.ff_binned_dist_count.clear();
+		graph.fr_binned_dist_count.clear();
+		graph.rf_binned_dist_count.clear();
+		graph.rr_binned_dist_count.clear();
 
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
@@ -1047,162 +1038,37 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
 		slots.push_back(b);
     }
 }
-/* 
-void Runner::qname_stats(Bam_record_vector &group) {//sono contanta di essere riuscita ad adattarlo! ora vedremo
-	std::size_t begin=0;//fist_read
-	std::size_t end=0;
-	const char* qname;
 
-	std::vector <std::size_t> r1_side;
-	r1_side.reserve(5);//inventato
-	std::vector <std::size_t> r2_side;
-	r2_side.reserve(5);
+/*bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { 
+    auto get_query_bounds = [](bam1_t *rec, int32_t &q_start, int32_t &q_end) {
+        uint32_t *cigar = bam_get_cigar(rec);
+        q_start = 0;
+        q_end = 0;
+        
+        // Il "Soft Clipping" (op 4) all'inizio ci dice dove inizia il match sulla read
+        if (bam_cigar_op(cigar[0]) == BAM_CSOFT_CLIP) {
+            q_start = bam_cigar_oplen(cigar[0]);
+        }
+        
+        // Calcoliamo la fine sommando la lunghezza consumata sulla query dal CIGAR
+        int32_t query_consumed = 0;
+        for (uint32_t i = 0; i < rec->core.n_cigar; ++i) {
+            if (bam_cigar_type(bam_cigar_op(cigar[i])) & 1) { // Consuma query (M, I, S)
+                query_consumed += bam_cigar_oplen(cigar[i]);
+            }
+        }
+        q_end = q_start + query_consumed;
+    };
 
-	std::size_t inner=0;
-	std::size_t outer=0;
-	std::size_t other=0;
+    int32_t start_a, end_a, start_b, end_b;
+    get_query_bounds(a, start_a, end_a);
+    get_query_bounds(b, start_b, end_b);
 
+    // Calcolo dell'intersezione tra i due intervalli [start, end]
+    int32_t overlap_start = std::max(start_a, start_b);
+    int32_t overlap_end = std::min(end_a, end_b);
+    int32_t overlap_len = overlap_end - overlap_start;
 
-	bool rescued=false;
-	bool R1_chim=false;
-	bool R2_chim=false;
-
-	bool cis=false;
-	bool facing=false;
-	bool distance=false;
-
-	std::size_t mapped_count1=0;
-	std::size_t mapped_count2=0;
-
-	Maptype a=qnameStats.type1=Maptype::N;;
-	Maptype b=qnameStats.type2=Maptype::N;;
-
-	while(begin<group.size()){ 
-		qname=bam_get_qname(group[begin]);
-		end=begin+1;
-		
-    	while(end < group.size() && strcmp(bam_get_qname(group[end]), qname) == 0){++end;}////////////////////group [begin,end) perchè end=begin+1 che è il primo diverso
-
-		r1_side.clear();
-		r2_side.clear();
-
-	    inner=0;
-	    outer=0;
-	    other=0;
-
-		rescued=false;
-		R1_chim=false;
-		R2_chim=false;
-
-		cis=false;
-		facing=false;
-		distance=false;
-
-		mapped_count1=0;
-		mapped_count2=0;
-
-		a=qnameStats.type1=Maptype::N;
-		b=qnameStats.type2=Maptype::N;
-
-//////walked e rescued. Una molecola candidata WW viene rescued: se ha una sola ligazione reale, ma appare come walk per effetti geometrici/tecnici.
-		for(std::size_t j=begin; j<end; ++j){
-			if (group[j]->core.flag & BAM_FSECONDARY) continue; //rimangono solo i supplementary e i primary mappati
-    		if (group[j]->core.flag & BAM_FUNMAP) continue;
-
-    		if (group[j]->core.flag & BAM_FREAD1) {
-				r1_side.push_back(j);//unico dai
-			}
-			
-    		if (group[j]->core.flag & BAM_FREAD2) { 
-				r2_side.push_back(j);
-			}
-		}
-
-		if(r1_side.size()>=2 || r2_side.size()>=2){
-			if((r1_side.size()==2 && r2_side.size()==1) || (r2_side.size()==2 && r1_side.size()==1)){ 
-				if	(r1_side.size() == 2) {
-					inner = r1_side.at(0);
-					outer = r1_side.at(1);
-					other = r2_side.at(0);
-					R1_chim=true;
-
-				}else if (r2_side.size() == 2){
-					inner = r2_side.at(0);
-					outer = r2_side.at(1);
-					other = r1_side.at(0);
-					R2_chim=true;
-				}
-			} else {
-				++qnameStats.WW;
-				begin=end;
-
-				continue; 
-			}
-
-			auto start_i = Alignstarts(group[inner]);
-			auto start_ou = Alignstarts(group[outer]);
-
-			if (start_i > start_ou){std::swap(inner, outer);}//se partono dello stesso posto più è lunga la parte non allineata più mi avvicino alla ligazione
-//RIGUARDARE SENSO BIOLOGICO
-
-			bool rev_i = group[inner]->core.flag & BAM_FREVERSE;
-			bool rev_ot = group[other]->core.flag & BAM_FREVERSE;
-			//controlli 
-			if((group[inner])->core.tid==(group[other])->core.tid) {cis=true;} 
-			if((!rev_i &&  rev_ot && group[inner]->core.pos <= group[other]->core.pos) || ( rev_i && !rev_ot && group[other]->core.pos <= group[inner]->core.pos)) {facing=true;}
-			if(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000) {distance=true;}////di default 2000 pb
-
-			if(cis && facing && distance) {
-				rescued=true;
-			}else{
-				++qnameStats.WW; 
-				begin=end;
-				continue;  
-			}
-		}
-
-//////pair stats
-		//devo rianalizzare lo stesso gruppo nel caso non fosse stato un WW
-		for(std::size_t i=begin; i<end; ++i){
-			if(group[i]->core.flag & BAM_FUNMAP) {continue;}
-//			if(group[i]->core.flag & BAM_FSUPPLEMENTARY) {!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-//continue;} //elimino i supplementari (devo farlo?)!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			if(!(group[i]->core.flag & BAM_FPAIRED)) {break;}// se non è una coppia è inutile fare la statistica
-			if(group[i]->core.flag & BAM_FREAD1) {
-				if(group[i]->core.flag & BAM_FSECONDARY) {mapped_count1++;
-				}else{mapped_count1++;} //dovrebbe essere il primary
-				++mapped_count1;
-			}
-			if(group[i]->core.flag & BAM_FREAD2) {++mapped_count2;} //conta sia secondary che primary della R2
-		}
-
-		a=(mapped_count1==0 ? Maptype::N :(mapped_count1==1 ? Maptype::U : Maptype::M));
-		b=(mapped_count2==0 ? Maptype::N :(mapped_count2==1 ? Maptype::U : Maptype::M));
-
-		if(rescued && R1_chim) {a=Maptype::R;}
-		if(rescued && R2_chim) {b=Maptype::R;}
-
-		if(a==Maptype::U && b==Maptype::R) {
-			++qnameStats.UR;
-			begin=end;
-			continue;
-		}
-
-		if (static_cast<uint8_t>(a) < static_cast<uint8_t>(b)) { std::swap(a, b);} //raggruppo UM e MU perchè a sarà sempre M rispetto a U
-
-		if(a==Maptype::U && b==Maptype::U) ++qnameStats.UU;
-		if(a==Maptype::M && b==Maptype::M) ++qnameStats.MM;
-		if(a==Maptype::N && b==Maptype::N) ++qnameStats.NN;
-
-		if(a==Maptype::M && b==Maptype::U) ++qnameStats.MU;
-		if(a==Maptype::U && b==Maptype::N) ++qnameStats.NU;
-		if(a==Maptype::M && b==Maptype::N) ++qnameStats.NM;
-
-		if(a==Maptype::R && b==Maptype::U) ++qnameStats.RU;
-		if(a==Maptype::R && b==Maptype::M) ++qnameStats.MR;
-		if(a==Maptype::R && b==Maptype::N) ++qnameStats.NR;
-
-		begin=end;
-	}
+    // Se l'overlap è maggiore della soglia, sono sovrapposti (quindi NON è una chimera pulita)
+    return (overlap_len > max_overlap);
 }*/

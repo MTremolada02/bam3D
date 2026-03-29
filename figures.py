@@ -4,8 +4,10 @@ import numpy as np
 
 sections = load_sections("all_stats.tsv")
 
-df = get_section(sections, "BINNED_DISTANCE")
-df = require_columns(df, ["bin_start", "bin_end", "count"], "BINNED_DISTANCE")
+#BINNED_DISTANCE_GRAPH
+#PS
+df = get_section(sections, "DIST_PS")
+df = require_columns(df, ["bin_start", "bin_end", "count"], "DIST_PS")
 
 df["bin_center"] = (df["bin_start"] + df["bin_end"]) / 2
 
@@ -17,9 +19,78 @@ plt.ylabel("Count")
 
 plt.grid(True, which="both", alpha=0.3)
 plt.tight_layout()
-plt.savefig("binned_distance_plot.pdf", bbox_inches="tight")
+plt.savefig("P(s)_distance_plot.pdf", bbox_inches="tight")
 plt.show()
 
+#FF
+df = get_section(sections, "DIST_FF")
+df = require_columns(df, ["bin_start", "bin_end", "count"], "DIST_FF")
+
+df["bin_center"] = (df["bin_start"] + df["bin_end"]) / 2
+
+plt.figure(figsize=(11, 4.8))
+plt.loglog(df["bin_center"], df["count"], linewidth=2)
+
+plt.xlabel("Genomic distance")
+plt.ylabel("Count")
+
+plt.grid(True, which="both", alpha=0.3)
+plt.tight_layout()
+plt.savefig("FF_distance_plot.pdf", bbox_inches="tight")
+plt.show()
+
+#FR
+df = get_section(sections, "DIST_FR")
+df = require_columns(df, ["bin_start", "bin_end", "count"], "DIST_FR")
+
+df["bin_center"] = (df["bin_start"] + df["bin_end"]) / 2
+
+plt.figure(figsize=(11, 4.8))
+plt.loglog(df["bin_center"], df["count"], linewidth=2)
+
+plt.xlabel("Genomic distance")
+plt.ylabel("Count")
+
+plt.grid(True, which="both", alpha=0.3)
+plt.tight_layout()
+plt.savefig("FR_distance_plot.pdf", bbox_inches="tight")
+plt.show()
+
+#RF
+df = get_section(sections, "DIST_RF")
+df = require_columns(df, ["bin_start", "bin_end", "count"], "DIST_RF")
+
+df["bin_center"] = (df["bin_start"] + df["bin_end"]) / 2
+
+plt.figure(figsize=(11, 4.8))
+plt.loglog(df["bin_center"], df["count"], linewidth=2)
+
+plt.xlabel("Genomic distance")
+plt.ylabel("Count")
+
+plt.grid(True, which="both", alpha=0.3)
+plt.tight_layout()
+plt.savefig("RF_distance_plot.pdf", bbox_inches="tight")
+plt.show()
+
+#RR
+df = get_section(sections, "DIST_RR")
+df = require_columns(df, ["bin_start", "bin_end", "count"], "DIST_RR")
+
+df["bin_center"] = (df["bin_start"] + df["bin_end"]) / 2
+
+plt.figure(figsize=(11, 4.8))
+plt.loglog(df["bin_center"], df["count"], linewidth=2)
+
+plt.xlabel("Genomic distance")
+plt.ylabel("Count")
+
+plt.grid(True, which="both", alpha=0.3)
+plt.tight_layout()
+plt.savefig("RR_distance_plot.pdf", bbox_inches="tight")
+plt.show()
+
+#PAIRSTATS
 pair_df = get_section(sections, "PAIR_TYPES")
 pair_df = require_columns(
     pair_df,
@@ -69,8 +140,11 @@ for cat in categories:
 ax.set_yticks(y)
 ax.set_yticklabels(df["run"])
 ax.tick_params(axis="y", length=0)
-ax.set_xlabel("Number of pairs")
+ax.margins(x=0)
+spazio_testo = 20 + (15 * len(df))
+ax.set_xlabel("Number of pairs", labelpad=spazio_testo)
 ax.set_ylabel("")
+
 
 # lascia spazio sotto
 fig.subplots_adjust(bottom=0.32)
