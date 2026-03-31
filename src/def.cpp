@@ -72,7 +72,7 @@ void Runner::write_all_stats_file(const std::string& out_path)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_name, const std::unordered_map<uint64_t, uint64_t>& data_map)
 {
-    write_section_header(myfile, section_name, "bin_start\tbin_end\tcount");
+    write_section_header(myfile, section_name, "bin_start\tbin_end\tcount\tcount_per_bp\tcount_fraction");
 
     std::vector<std::pair<uint32_t, uint64_t>> entries(data_map.begin(), data_map.end());
 
@@ -80,6 +80,11 @@ void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_
               [](const auto& a, const auto& b) {
                   return a.first < b.first;
               });
+
+	uint64_t total_count = 0;
+	for (const auto& kv : entries) {
+  		total_count += kv.second;
+	}
 
     for (const auto& kv : entries) {
         uint32_t bin_index = kv.first;
@@ -91,7 +96,15 @@ void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_
         if (bin_start < 1) bin_start = 1;
         if (bin_end < bin_start) bin_end = bin_start;
 
-        myfile << bin_start << "\t" << bin_end << "\t" << count << "\n";
+		uint64_t bin_width = bin_end - bin_start + 1;
+		double count_per_bp = static_cast<double>(count) / static_cast<double>(bin_width);
+
+		double count_fraction = 0.0;
+		if (total_count > 0) {
+			count_fraction = static_cast<double>(count) / static_cast<double>(total_count);
+		}
+
+        myfile << bin_start << "\t" << bin_end << "\t" << count << "\t" << count_per_bp << "\t" << count_fraction << "\n";
     }
 }
 
