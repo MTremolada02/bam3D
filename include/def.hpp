@@ -27,6 +27,7 @@ struct Graph {
 	std::unordered_map<uint64_t, uint64_t> rf_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rr_binned_dist_count; 
 
+	std::unordered_map<uint32_t, uint64_t> isize_hist;
 	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin per decade: pow(10.0, 1.0 / 10.0)
 	double inv_log_bin_factor = 1.0 / std::log(log_bin_factor);
 };
@@ -67,8 +68,8 @@ struct PairStats {
 	bool good_read1=false; //dovrebbe essere locale
 	bool good_read2=false; //dovrebbe essere locale
 
-    uint64_t UMone_sided  = 0;
-    uint64_t UMtwo_sided  = 0;
+    uint64_t one_side  = 0;
+    uint64_t two_side_mapped  = 0;
     uint64_t duplicated   = 0;
     uint64_t UNmapped     = 0;
     uint64_t sameCr       = 0;  // cis
