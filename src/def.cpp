@@ -263,7 +263,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
 
             auto flag = group[j]->core.flag;
 
-	    if (flag & BAM_FDUP) is_dupl=true;   
+	      
 
             if (flag & BAM_FSECONDARY) {
 
@@ -278,7 +278,10 @@ void Runner::qname_stats(Bam_record_vector &group) {
                     if (!(flag & BAM_FUNMAP)) {//se è mappata
                         r1_mapped.push_back(j);
                         if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r1;
-                        else primary_r1 =j;
+                        else {
+primary_r1 =j;
+if (flag & BAM_FDUP) is_dupl=true;  
+}
                     }
 
                 } else if (flag & BAM_FREAD2){
@@ -287,7 +290,11 @@ void Runner::qname_stats(Bam_record_vector &group) {
                     if (!(flag & BAM_FUNMAP)) {//se è mappata
                         r2_mapped.push_back(j);
                         if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r2;
-                        else primary_r2 =j;
+                        else {
+primary_r2 =j;
+if (flag & BAM_FDUP) is_dupl=true;  
+}
+
                     }
 
                 }
@@ -828,10 +835,7 @@ std::cout << "fall back: " << qnameStats.fallback << "\n";
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
 	vectorbox.clear();
 	for (int i=0; i<vectorbox.get_size_wanted();++i){ 
-		if(!vectorbox.add_record(fp_in,bamHdr))
-std::cout<<i<<std::endl;
-
-			break;
+		if(!vectorbox.add_record(fp_in,bamHdr)) break;
 	}
 }
 
@@ -843,7 +847,7 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 
 	for (int i=0;i<vectorbox.get_size_wanted();++i){
 		if(bridge){
-			if(first){//:( come faccio
+			if(first){
 				vectorbox.add_record(fp_in,bamHdr);
 				first =false;
 			}else{
