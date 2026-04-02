@@ -213,6 +213,9 @@ void Runner::qname_stats(Bam_record_vector &group) {
     std::size_t primary_r1 = (std::size_t)-1, primary_r2 = (std::size_t)-1;
     std::size_t supplementary_r1 = 0, supplementary_r2 = 0;
     
+	bool mapR1 = false;
+	bool mapR2 = false;
+
     bool r1_unresolved = false;
     bool r2_unresolved = false;
     bool rescued = false;
@@ -243,6 +246,9 @@ void Runner::qname_stats(Bam_record_vector &group) {
         secondary_r1 = secondary_r2 = 0;
         supplementary_r1 = supplementary_r2 = 0;
         primary_r1 = primary_r2 = (std::size_t)-1;
+
+		mapR1 = false;
+		mapR2 = false;
 
         r1_unresolved = false;
         r2_unresolved = false;
@@ -279,9 +285,10 @@ void Runner::qname_stats(Bam_record_vector &group) {
                         r1_mapped.push_back(j);
                         if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r1;
                         else {
-primary_r1 =j;
-if (flag & BAM_FDUP) is_dupl=true;  
-}
+				primary_r1 =j;
+				if (flag & BAM_FDUP) is_dupl=true;
+				if (!(flag & BAM_FUNMAP)) mapR1=true;  
+			     }
                     }
 
                 } else if (flag & BAM_FREAD2){
@@ -291,9 +298,10 @@ if (flag & BAM_FDUP) is_dupl=true;
                         r2_mapped.push_back(j);
                         if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r2;
                         else {
-primary_r2 =j;
-if (flag & BAM_FDUP) is_dupl=true;  
-}
+				primary_r2 =j;
+				if (flag & BAM_FDUP) is_dupl=true;
+  				if (!(flag & BAM_FMUNMAP)) mapR2=true;
+			     }
 
                     }
 
@@ -302,10 +310,14 @@ if (flag & BAM_FDUP) is_dupl=true;
         }
 
 	if(is_dupl) {
-	  ++qnameStats.DD;
-	  begin=end;
-          continue;
+		++qnameStats.DD;
+		begin=end;
+    	continue;
 	}
+
+		if (mapR1 && mapR2) ++pairStats.two_side_mapped;
+		if (mapR1 != mapR2)	++pairStats.one_side;
+		if (!mapR1 && !mapR2) ++pairStats.UNmapped;
 
         bool r1_has_null = (r1_all.size() > r1_mapped.size());
         bool r2_has_null = (r2_all.size() > r2_mapped.size());
@@ -662,11 +674,11 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 		else if (flag & BAM_FREAD1) { // così ne prendo solo una e non due non so se ha senso
 			++pairStats.read1;
 
-			if ((flag & BAM_FUNMAP && !(flag & BAM_FMUNMAP))^(flag & BAM_FMUNMAP && !(flag & BAM_FUNMAP))) {++pairStats.UMone_sided;} // statistica fatta sul singolo se no è doppia
-			else if (flag & BAM_FUNMAP && (flag & BAM_FMUNMAP)) {++pairStats.UNmapped;}
+			//if ((flag & BAM_FUNMAP && !(flag & BAM_FMUNMAP))^(flag & BAM_FMUNMAP && !(flag & BAM_FUNMAP))) {++pairStats.UMone_sided;} // statistica fatta sul singolo se no è doppia
+			//else if (flag & BAM_FUNMAP && (flag & BAM_FMUNMAP)) {++pairStats.UNmapped;}
 	
 			if(!(flag & BAM_FUNMAP) && !(flag & BAM_FMUNMAP)) {
-				++pairStats.UMtwo_sided;
+				//++pairStats.UMtwo_sided;
 				pairStats.good_read1=true;
 				++pairStats.good_pairs;
 			}
@@ -774,11 +786,11 @@ void Runner::output(){
 		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
 		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl; 
 		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl;
-		std::cout<<"Pairs_two_sided_mapped:"<<pairStats.UMtwo_sided<<std::endl; 
-		std::cout<<"Pairs_one_sided_mapped:"<<pairStats.UMone_sided<<std::endl;
+		std::cout<<"Pairs_two_sided_mapped:"<<pairStats.two_side_mapped<<std::endl; 
+		std::cout<<"Pairs_one_sided_mapped:"<<pairStats.one_side<<std::endl;
 		std::cout<<"Pairs_unmapped:"<<pairStats.UNmapped<<std::endl;//each side
-		std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
+		std::cout<<"%One_sided:"<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
+		std::cout<<"%Two_sided:"<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
 		std::cout<<"%unmapped_2sided"<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
 		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
 		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
