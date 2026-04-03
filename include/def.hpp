@@ -71,8 +71,9 @@ struct PairStats {
     uint64_t one_side  = 0;
     uint64_t two_side_mapped  = 0;
     uint64_t duplicated   = 0;
+    uint64_t dupl=0;
     uint64_t UNmapped     = 0;
-    uint64_t sameCr       = 0;  // cis
+    uint64_t cis       = 0;  // cis
 
     uint64_t read1 = 0;
     uint64_t read2 = 0;

@@ -287,7 +287,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
                         else {
 				primary_r1 =j;
 				if (flag & BAM_FDUP) is_dupl=true;
-				if (!(flag & BAM_FUNMAP)) mapR1=true;  
+				 mapR1=true;  
 			     }
                     }
 
@@ -300,7 +300,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
                         else {
 				primary_r2 =j;
 				if (flag & BAM_FDUP) is_dupl=true;
-  				if (!(flag & BAM_FMUNMAP)) mapR2=true;
+  				 mapR2=true;
 			     }
 
                     }
@@ -309,15 +309,21 @@ void Runner::qname_stats(Bam_record_vector &group) {
             }
         }
 
-	if(is_dupl) {
-		++qnameStats.DD;
-		begin=end;
-    	continue;
-	}
 
-		if (mapR1 && mapR2) ++pairStats.two_side_mapped;
+		if (mapR1 && mapR2) {
+			if(is_dupl) ++pairStats.dupl;
+			++pairStats.two_side_mapped;
+			if (group[primary_r1]->core.tid = group[primary_r2]->core.tid) ++pairStats.cis; 
+		}
 		if (mapR1 != mapR2)	++pairStats.one_side;
 		if (!mapR1 && !mapR2) ++pairStats.UNmapped;
+
+		if(is_dupl) {
+                	++qnameStats.DD;
+                	begin=end;
+        		continue;
+        	}
+
 
         bool r1_has_null = (r1_all.size() > r1_mapped.size());
         bool r2_has_null = (r2_all.size() > r2_mapped.size());
@@ -709,7 +715,7 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 				flag_inspector(vectorbox[i]);
  
 				if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
-					++pairStats.sameCr;
+					//++pairStats.sameCr;
 					if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
 						if(std::abs((long double)vectorbox[i]->core.isize)<10000){
 							++readStats.avf_counter;
@@ -771,51 +777,45 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 
 
 void Runner::output(){
-		std::cout<<"Tot_raw_record:"<<readStats.readN<<std::endl;
-		std::cout<<"Non_primary:"<<readStats.secondary+readStats.supplementary<<std::endl;
-		std::cout<<"supplementary"<<readStats.supplementary<<std::endl; 
-		std::cout<<"Read1:"<<pairStats.read1<<std::endl;
-		std::cout<<"Read2:"<<pairStats.read2<<std::endl;
-		std::cout<<"Reads_mapped:"<<readStats.readN-readStats.unmapped<<std::endl;
-		std::cout<<"unmapped:"<<readStats.unmapped<<std::endl;       
-		//std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN)<<"%"<<std::endl;    
-		std::cout<<"Proper_pairs:"<<pairStats.proper_pairs<<std::endl;;
-		//std::cout<<"Proper_pairs:"<<((pairStats.proper_pairs*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		//std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)readStats.readN)<<"%"<<std::endl;
-		std::cout<<"Duplicated:"<<pairStats.duplicated<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Qc_fail:"<<readStats.qc_fail<<std::endl; 
-		std::cout<<"Pairs:"<<pairStats.pairN<<std::endl;
-		std::cout<<"Pairs_two_sided_mapped:"<<pairStats.two_side_mapped<<std::endl; 
-		std::cout<<"Pairs_one_sided_mapped:"<<pairStats.one_side<<std::endl;
-		std::cout<<"Pairs_unmapped:"<<pairStats.UNmapped<<std::endl;//each side
-		std::cout<<"%One_sided:"<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<"%"<<std::endl;  
-		std::cout<<"%Two_sided:"<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
-		std::cout<<"%unmapped_2sided"<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<"%"<<std::endl; 
-		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
-		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)pairStats.pairN)<<"%"<<std::endl;
-		std::cout<<"CIS:"<<pairStats.sameCr<<std::endl;  
-		std::cout<<"insert_size_avarage_filtred:"<<readStats.mean_insert_filtr<<std::endl;
-		std::cout<<"SD_filtr:"<<sqrt(readStats.quadratic_mean_filtr-pow(readStats.mean_insert_filtr,2))<<std::endl; //rad(<x^2>-<x>^2)
-		std ::cout<<"insert_size_average:"<<readStats.mean_insert<<std::endl;
-		std::cout<<"SD:"<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
+		std::cout<<"SINGLE READ STATISTICS:"<<std::endl;
+		std::cout<<"Tot_raw_record: "<<readStats.readN<<std::endl;
+		std::cout<<"Non_primary: "<<readStats.secondary+readStats.supplementary<<std::endl;
+		std::cout<<"Primary_read: "<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
+		std::cout<<"Supplementary: "<<readStats.supplementary<<std::endl; 
+		std::cout<<"Read1: "<<pairStats.read1<<std::endl;
+		std::cout<<"Read2: "<<pairStats.read2<<std::endl;
+		std::cout<<"Reads_mapped: "<<readStats.readN-readStats.unmapped<<std::endl;
+		std::cout<<"Unmapped: "<<readStats.unmapped<<std::endl;        
+		std::cout<<"Proper_pairs: "<<pairStats.proper_pairs<<std::endl;;
+		std::cout<<"Record_duplicated: "<<pairStats.duplicated<<std::endl;
+		std::cout<<"MapQ0: "<<readStats.mapQ0<<std::endl;
+		std::cout<<"Qc_fail: "<<readStats.qc_fail<<std::endl; 
+		std::cout<<"Pairs: "<<pairStats.pairN<<std::endl;
+		std::cout<<"insert_size_avarage_filtred: "<<readStats.mean_insert_filtr<<std::endl;
+		std::cout<<"SD_filtr: "<<sqrt(readStats.quadratic_mean_filtr-pow(readStats.mean_insert_filtr,2))<<std::endl; //rad(<x^2>-<x>^2)
+		std ::cout<<"insert_size_average: "<<readStats.mean_insert<<std::endl;
+		std::cout<<"SD: "<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
 		//std ::cout<<"SD_insert_size:"<<readStats.sd_insert<<std::endl;
 		//std::cout << "insert size average:\t" << readStats.mean_insert << std::endl;
-		std::cout<<"error_rate:"<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
-		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
-		std::cout<<"Samtools_Stats_Tot_record(Tot_record-Non_Primary):"<<readStats.readN-(readStats.secondary+readStats.supplementary)<<std::endl;
-		std::cout<<"mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
-		//std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
-		//std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
-		std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-		std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
-		std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl;
-		//std::cout<<"%One_sided:"<< ((pairStats.UMone_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl;  
-		//std::cout<<"%Two_sided:"<< ((pairStats.UMtwo_sided*100)/(long double)readStats.unmapped)<<"%"<<std::endl; 
-		//std::cout<<"%Duplicated:"<< pairStats.duplicated<<std::endl;
-		//std::cout<<"%Duplicated:"<< ((pairStats.duplicated*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;
-		//std::cout<<"%CIS:"<< ((pairStats.sameCr*100)/(long double)((readStats.readN-(readStats.secondary+readStats.supplementary))/2))<<"%"<<std::endl;  
-		
+		std::cout<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
+		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+		std::cout<<"PAIR READS STATISTICS:"<<std::endl;
+		std::cout<<"Pairs_two_sided_mapped: "<<pairStats.two_side_mapped<<std::endl;
+		std::cout<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
+                std::cout<<"Pairs_one_sided_mapped: "<<pairStats.one_side<<std::endl;
+		std::cout<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
+                std::cout<<"Pairs_unmapped: "<<pairStats.UNmapped<<std::endl;
+		std::cout<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
+                std::cout<<"CIS: "<<pairStats.cis<<std::endl;
+		std::cout<<"Primary_dupl "<<pairStats.dupl<<std::endl;
+		std::cout<<"unique_primary: "<<pairStats.two_side_mapped-pairStats.dupl<<std::endl;//mapped primary after deduplication
+		std::cout<<std::endl;
+		std::cout<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
+		std::cout<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
+		std::cout<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
+		std::cout<<"%CIS: "<<((pairStats.cis*100)/(long double)pairStats.two_side_mapped)<<std::endl;
+		std::cout<<"%primary_dupl: "<<((pairStats.dupl*100)/(long double)pairStats.two_side_mapped)<<std::endl;
+		std::cout<<std::endl;
 		std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 		std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
 
@@ -823,25 +823,34 @@ void Runner::output(){
 		std::cout<<"%two_sided_mapped"<< (qnameStats.UU+qnameStats.UR+qnameStats.RU)/(long double)tot_qname_stats<<std::endl;
 		std::cout<<"two_sided_mapped"<< qnameStats.UU+qnameStats.UR+qnameStats.RU<<std::endl;
 		std::cout<<"total read"<<tot_qname_stats<<std::endl;
-		std::cout<<"funzione di overlapping"<<pairStats.counter1<<std::endl;
+		//std::cout<<"funzione di overlapping"<<pairStats.counter1<<std::endl;
 
 		std::cout << "unresolved: " << qnameStats.dbg_unresolved << "\n";
-std::cout << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
-std::cout << "not 3"<<  qnameStats.dbg_not3 << std::endl;
-std::cout << "no mapped chim side"<<  qnameStats.dbg_unmapped << std::endl;
-std::cout << "outer_bad->WW: " << qnameStats.dbg_outer_bad << "\n";
-std::cout << "outer noindex (not possible)"<<  qnameStats.dbg_outer_noindex << std::endl;
-std::cout << "outer bad other M"<<  qnameStats.dbg_outer_bad_otherM << std::endl;
-std::cout << "outer bad other U"<<  qnameStats.dbg_outer_bad_otherU << std::endl;
-std::cout << "outer bad other N"<<  qnameStats.dbg_outer_bad_otherN << std::endl;
-std::cout << "other==NO_INDEX: " << qnameStats.dbg_other_no_index << "\n";
-std::cout << "other_type==N: " << qnameStats.dbg_other_type_N << "\n";
-std::cout << "other_type==M: " << qnameStats.dbg_other_type_M << "\n";
-std::cout << "ignore_inner->R: " << qnameStats.dbg_ignore_inner << "\n";
-std::cout << "ignore inner per gap<20"<<  qnameStats.dbg_gap_large << std::endl;
-std::cout << "geom pass->R: " << qnameStats.dbg_geom_pass << "\n";
-std::cout << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
-std::cout << "fall back: " << qnameStats.fallback << "\n";
+		std::cout << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
+		std::cout << "not 3"<<  qnameStats.dbg_not3 << std::endl;
+		std::cout << "no mapped chim side"<<  qnameStats.dbg_unmapped << std::endl;
+		std::cout << "outer_bad->WW: " << qnameStats.dbg_outer_bad << "\n";
+		std::cout << "outer noindex (not possible)"<<  qnameStats.dbg_outer_noindex << std::endl;
+		std::cout << "outer bad other M"<<  qnameStats.dbg_outer_bad_otherM << std::endl;
+		std::cout << "outer bad other U"<<  qnameStats.dbg_outer_bad_otherU << std::endl;
+		std::cout << "outer bad other N"<<  qnameStats.dbg_outer_bad_otherN << std::endl;
+		std::cout << "other==NO_INDEX: " << qnameStats.dbg_other_no_index << "\n";
+		std::cout << "other_type==N: " << qnameStats.dbg_other_type_N << "\n";
+		std::cout << "other_type==M: " << qnameStats.dbg_other_type_M << "\n";
+		std::cout << "ignore_inner->R: " << qnameStats.dbg_ignore_inner << "\n";
+		std::cout << "ignore inner per gap<20"<<  qnameStats.dbg_gap_large << std::endl;
+		std::cout << "geom pass->R: " << qnameStats.dbg_geom_pass << "\n";
+		std::cout << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
+		std::cout << "fall back: " << qnameStats.fallback << "\n";
+
+std::cout<<"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"<<std::endl;
+		std::cout<<"mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
+                std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
+                std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
+                std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
+                std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
+                std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl; 
+
 	}
 
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
