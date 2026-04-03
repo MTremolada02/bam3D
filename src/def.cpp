@@ -30,7 +30,7 @@ void Runner::write_section_header(std::ofstream& myfile, const std::string& sect
     myfile << columns_line << "\n";
 }
 
-void Runner::write_all_stats_file(const std::string& out_path)
+void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
 {
     std::ofstream myfile(out_path, std::ios::out);
 
@@ -39,28 +39,33 @@ void Runner::write_all_stats_file(const std::string& out_path)
         return;
     }
 
-	if (!graph.Ps_binned_dist_count.empty()) {
-        write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
-    }
+	if(userInput.pair_read_stats){ 
 
-	if (!graph.Ps_binned_dist_count.empty()) {
-        write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
-    }
+		if (!graph.graph_inter_count.empty() && !graph.graph_intra_count.empty()) {
+			write_reference_graph(myfile,bamHdr);
+		}
 
-	if (!graph.Ps_binned_dist_count.empty()) {
-        write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
-    }
+		if (!graph.Ps_binned_dist_count.empty()) {
+			write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
+		}
 
-	if (!graph.Ps_binned_dist_count.empty()) {
-        write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
-    }
+		if (!graph.Ps_binned_dist_count.empty()) {
+			write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
+		}
+
+		if (!graph.Ps_binned_dist_count.empty()) {
+			write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
+		}
+
+		if (!graph.Ps_binned_dist_count.empty()) {
+			write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
+		}
 
 
-	if (!graph.Ps_binned_dist_count.empty()) {
-        write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
-    }
+		if (!graph.Ps_binned_dist_count.empty()) {
+			write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
+		}
 
-	if(userInput.pair_read_stats) { 
 		write_pair_types_section(myfile);
 	}
 
@@ -70,6 +75,30 @@ void Runner::write_all_stats_file(const std::string& out_path)
 
 //GRAPHS
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Runner::write_reference_graph(std::ofstream& myfile, bam_hdr_t* bamHdr) {
+    //nodes
+    write_section_header(myfile, "GRAPH_NODES", "id\tname\tlength\tintra_count");
+
+    for (int32_t tid = 0; tid < bamHdr->n_targets; ++tid) {
+        uint64_t intra = 0;
+        auto it = graph.graph_intra_count.find(tid);
+        if (it != graph.graph_intra_count.end()) intra = it->second;
+
+        myfile << tid << "\t" << bamHdr->target_name[tid] << "\t" << bamHdr->target_len[tid] << "\t"<< intra << "\n";
+    }
+    
+    // archi
+    write_section_header(myfile, "GRAPH_EDGES", "source\ttarget\tinter_count");
+
+    for (const auto& kv : graph.graph_inter_count) {
+        uint32_t source = kv.first.first;
+        uint32_t target = kv.first.second;
+        uint64_t count  = kv.second;
+
+        myfile << source << "\t" << target << "\t" << count << "\n";
+    }
+}
+
 void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_name, const std::unordered_map<uint64_t, uint64_t>& data_map)
 {
     write_section_header(myfile, section_name, "bin_start\tbin_end\tcount\tcount_per_bp\tcount_fraction");
@@ -183,6 +212,21 @@ void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* re
     else if ( left_rev && !right_rev) update_log_binned_distance(dist, graph.rf_binned_dist_count);
     else if (!left_rev && !right_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);
     else if ( left_rev &&  right_rev) update_log_binned_distance(dist, graph.rr_binned_dist_count);
+}
+
+void Runner::update_reference_graph(const bam1_t* rec1, const bam1_t* rec2) {
+    if (!rec1 || !rec2) return;
+
+    uint32_t tid1 = rec1->core.tid;
+    uint32_t tid2 = rec2->core.tid;
+
+    if (tid1 == tid2) {
+        ++graph.graph_intra_count[tid1];
+    } else {
+        uint32_t a = std::min(tid1, tid2);
+        uint32_t b = std::max(tid1, tid2);
+        ++graph.graph_inter_count[{a, b}];
+    }
 }
 
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
@@ -595,6 +639,7 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
+			update_reference_graph(group[plot_r1], group[plot_r2]);
         }
         // -------------------------
         // 6) classificazione finale
@@ -994,7 +1039,7 @@ void Runner::run() {
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
     		
-		write_all_stats_file("all_stats.tsv");//!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		write_all_stats_file("all_stats.tsv",bamHdr);//!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		output();
 		
 		bam_hdr_destroy(bamHdr);

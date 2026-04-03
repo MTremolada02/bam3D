@@ -21,6 +21,9 @@ struct UserInputBam3D : UserInput { // additional input
 };
 
 struct Graph {
+	std::unordered_map<uint32_t, uint64_t> graph_intra_count;
+	std::map<std::pair<uint32_t,uint32_t>, uint64_t> graph_inter_count;
+
 	std::unordered_map<uint64_t, uint64_t> Ps_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> ff_binned_dist_count; //forse un po' grande uint_64 
 	std::unordered_map<uint64_t, uint64_t> fr_binned_dist_count;
@@ -173,11 +176,13 @@ private:
 public:
     void loadInput(UserInputBam3D userInput);
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
-	void write_all_stats_file(const std::string&);
+	void write_all_stats_file(const std::string&, bam_hdr_t*);
 	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
 	void write_pair_types_section(std::ofstream&);
+	void write_reference_graph(std::ofstream&, bam_hdr_t*);
 	void update_log_binned_distance(uint64_t, std::unordered_map<uint64_t, uint64_t>&);
 	void update_pair_plots_from_records(const bam1_t*, const bam1_t*);
+	void update_reference_graph(const bam1_t*, const bam1_t*);
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	double percentage(std::size_t, double);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
