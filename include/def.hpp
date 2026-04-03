@@ -177,6 +177,7 @@ public:
 	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
 	void write_pair_types_section(std::ofstream&);
 	void update_log_binned_distance(uint64_t, std::unordered_map<uint64_t, uint64_t>&);
+	void update_pair_plots_from_records(const bam1_t*, const bam1_t*);
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	double percentage(std::size_t, double);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
@@ -188,7 +189,7 @@ public:
 	void flag_inspector(bam1_t*);
 	void histo_global_distance(std::unordered_map<uint64_t, uint64_t>&);
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
-        void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
+    void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
 	void processReads(Bam_record_vector &);
 	int Alignend(const bam1_t* b);	
