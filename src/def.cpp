@@ -39,9 +39,9 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
         return;
     }
 
-	if(userInput.pair_read_stats){ 
+	//if(userInput.pair_read_stats){ 
 
-		if (!graph.graph_inter_count.empty() && !graph.graph_intra_count.empty()) {
+		if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
 			write_reference_graph(myfile,bamHdr);
 		}
 
@@ -49,25 +49,25 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
 			write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
 		}
 
-		if (!graph.Ps_binned_dist_count.empty()) {
+		if (!graph.ff_binned_dist_count.empty()) {
 			write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
 		}
 
-		if (!graph.Ps_binned_dist_count.empty()) {
+		if (!graph.fr_binned_dist_count.empty()) {
 			write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
 		}
 
-		if (!graph.Ps_binned_dist_count.empty()) {
+		if (!graph.rf_binned_dist_count.empty()) {
 			write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
 		}
 
 
-		if (!graph.Ps_binned_dist_count.empty()) {
+		if (!graph.rr_binned_dist_count.empty()) {
 			write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
 		}
 
 		write_pair_types_section(myfile);
-	}
+	//}
 
     myfile.close();
 }
@@ -1008,6 +1008,8 @@ void Runner::run() {
 		graph.fr_binned_dist_count.clear();
 		graph.rf_binned_dist_count.clear();
 		graph.rr_binned_dist_count.clear();
+		graph.graph_intra_count.clear();
+		graph.graph_inter_count.clear();
 
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
