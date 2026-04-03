@@ -161,6 +161,30 @@ void Runner::write_pair_types_section(std::ofstream& myfile)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* rec2) {
+    if (!rec1 || !rec2) return;
+    if (rec1->core.tid != rec2->core.tid) return; // solo stesso riferimento
+
+    const bam1_t* left = rec1;
+    const bam1_t* right = rec2;
+
+    if (left->core.pos > right->core.pos) {
+        std::swap(left, right);
+    }
+
+    uint64_t dist = static_cast<uint64_t>(right->core.pos - left->core.pos);
+
+    bool left_rev  = (left->core.flag  & BAM_FREVERSE);
+    bool right_rev = (right->core.flag & BAM_FREVERSE);
+
+    update_log_binned_distance(dist, graph.Ps_binned_dist_count);
+
+    if      (!left_rev && right_rev)  update_log_binned_distance(dist, graph.fr_binned_dist_count);
+    else if ( left_rev && !right_rev) update_log_binned_distance(dist, graph.rf_binned_dist_count);
+    else if (!left_rev && !right_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);
+    else if ( left_rev &&  right_rev) update_log_binned_distance(dist, graph.rr_binned_dist_count);
+}
+
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
 	const uint32_t* cigar = bam_get_cigar(b);
@@ -224,6 +248,10 @@ void Runner::qname_stats(Bam_record_vector &group) {
     bool R2_chim = false;
     std::size_t inner = 0, outer = 0, other = 0;
 
+	const std::size_t NO_INDEX = static_cast<std::size_t>(-1);
+    std::size_t plot_r1 = NO_INDEX;
+    std::size_t plot_r2 = NO_INDEX;
+
     std::size_t MAX_INTER_ALIGN_GAP=20;
 
     Maptype a = Maptype::N;
@@ -256,6 +284,9 @@ void Runner::qname_stats(Bam_record_vector &group) {
         is_dupl = false;
         R1_chim = false;
         R2_chim = false;
+
+    	plot_r1 = NO_INDEX;
+    	plot_r2 = NO_INDEX;
 
         a = Maptype::N;
         b = Maptype::N;
@@ -308,6 +339,12 @@ void Runner::qname_stats(Bam_record_vector &group) {
                 }
             }
         }
+
+		if(is_dupl) {
+			++qnameStats.DD;
+			begin=end;
+			continue;
+		}
 
 
 		if (mapR1 && mapR2) {
@@ -558,10 +595,29 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 			}
 
         }
+
+		 if (a == Maptype::U && b == Maptype::U) {
+            plot_r1 = primary_r1;
+            plot_r2 = primary_r2;
+        }
+        else if (a == Maptype::R && b == Maptype::U) {
+            plot_r1 = outer;   // lato R1 rescued
+            plot_r2 = other;   // lato R2 unique
+        }
+        else if (a == Maptype::U && b == Maptype::R) {
+            plot_r1 = other;   // lato R1 unique
+            plot_r2 = outer;   // lato R2 rescued
+        }
+
+        if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
+            update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
+        }
         // -------------------------
         // 6) classificazione finale
         // -------------------------
         bool classified = false;
+
+		
 
         if (a == Maptype::U && b == Maptype::R) {
             ++qnameStats.UR;
@@ -589,10 +645,10 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         begin = end;
     }
+	}
 }
 
-double Runner::percentage(std::size_t value, double total)
-{
+double Runner::percentage(std::size_t value, double total) {
     if (total == 0.0) return 0.0;
     return 100.0 * static_cast<double>(value) / total;
 }
@@ -740,7 +796,7 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 						++chrom_dist_count[chrom][dist];
 					}
 						
-					if(pairStats.good_read1 ){ 
+					/*if(pairStats.good_read1 ){ 
 						bool r1_rev = (vectorbox[i]->core.flag & BAM_FREVERSE);//POTREI USARLI IN TUTTA
 						bool r2_rev = (vectorbox[i]->core.flag & BAM_FMREVERSE);
 
@@ -751,7 +807,7 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 						else if (!r1_rev && !r2_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);// Forward-Forward (Same-strand) ----> --->
 						else if (r1_rev && r2_rev) 	 update_log_binned_distance(dist, graph.rr_binned_dist_count);// Reverse-Reverse (Same-strand) <---- <----
 											
-					}
+					}*/
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
 			      	// if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
