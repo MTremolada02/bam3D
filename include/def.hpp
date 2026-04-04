@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <algorithm>
 
+#include <random>
+
 //AGGIUNTA PER GRAFICI
 struct TlenClassRow {
     std::string run;
@@ -34,6 +36,15 @@ struct ReadErrorRow {
     uint8_t mapq2 = 0;
 };
 
+struct TlenReservoir {
+    std::vector<TlenClassRow> rows;
+    uint64_t seen = 0;
+};
+
+struct ReadErrorReservoir {
+    std::vector<ReadErrorRow> rows;
+    uint64_t seen = 0;
+};
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -200,8 +211,11 @@ private:
 
 private:
 
-	std::vector<TlenClassRow> tlen_class_rows;
-	std::vector<ReadErrorRow> read_error_rows;
+	std::unordered_map<std::string, TlenReservoir> tlen_samples;
+	std::unordered_map<std::string, ReadErrorReservoir> read_error_samples;
+	std::mt19937_64 rng{42};
+	std::size_t max_sample_per_class = 50000;	
+
 
     std::unordered_map<uint64_t,uint64_t> global_dist_count;
     std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
@@ -210,9 +224,12 @@ public:
 
 	void collect_tlen_for_ecdf_violin(const bam1_t*, const bam1_t*, bam_hdr_t*, const std::string&);
 	void collect_read_error_data(const bam1_t*, const bam1_t*, bam_hdr_t*, const std::string&);
-	uint64_t Runner::get_nm_mismatches(const bam1_t*);
+	uint64_t get_nm_mismatches(const bam1_t*);
 	void write_tlen_class_section(std::ofstream&);
 	void write_read_error_section(std::ofstream&);
+	void reservoir_add_tlen(const std::string&, const TlenClassRow&);
+	void reservoir_add_read_error(const std::string&, const ReadErrorRow&);
+
 
     void loadInput(UserInputBam3D userInput);
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);

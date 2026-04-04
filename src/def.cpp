@@ -20,6 +20,42 @@
 #include "global.h"
 #include "def.hpp"
 
+void Runner::reservoir_add_tlen(const std::string& key, const TlenClassRow& row)
+{
+    auto& bucket = tlen_samples[key];
+    bucket.seen++;
+
+    if (bucket.rows.size() < max_sample_per_class) {
+        bucket.rows.push_back(row);
+        return;
+    }
+
+    std::uniform_int_distribution<uint64_t> dist(0, bucket.seen - 1);
+    uint64_t j = dist(rng);
+
+    if (j < max_sample_per_class) {
+        bucket.rows[static_cast<std::size_t>(j)] = row;
+    }
+}
+
+void Runner::reservoir_add_read_error(const std::string& key, const ReadErrorRow& row)
+{
+    auto& bucket = read_error_samples[key];
+    bucket.seen++;
+
+    if (bucket.rows.size() < max_sample_per_class) {
+        bucket.rows.push_back(row);
+        return;
+    }
+
+    std::uniform_int_distribution<uint64_t> dist(0, bucket.seen - 1);
+    uint64_t j = dist(rng);
+
+    if (j < max_sample_per_class) {
+        bucket.rows[static_cast<std::size_t>(j)] = row;
+    }
+}
+
 void Runner::collect_tlen_for_ecdf_violin(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
 {
     if (!rec1 || !rec2 || !bamHdr) return;
@@ -46,26 +82,28 @@ void Runner::collect_tlen_for_ecdf_violin(const bam1_t* rec1, const bam1_t* rec2
     double lx = std::log10(static_cast<double>(abs_tlen));
 
     TlenClassRow row_all;
-    row_all.run = run_label;
-    row_all.length_class = "ALL";
-    row_all.ref_name = ref_name;
-    row_all.contig_len = contig_len;
-    row_all.abs_tlen = abs_tlen;
-    row_all.log10_abs_tlen = lx;
-    row_all.mapq1 = rec1->core.qual;
-    row_all.mapq2 = rec2->core.qual;
-    tlen_class_rows.push_back(row_all);
+	row_all.run = run_label;
+	row_all.length_class = "ALL";
+	row_all.ref_name = ref_name;
+	row_all.contig_len = contig_len;
+	row_all.abs_tlen = abs_tlen;
+	row_all.log10_abs_tlen = lx;
+	row_all.mapq1 = rec1->core.qual;
+	row_all.mapq2 = rec2->core.qual;
 
-    TlenClassRow row_cls;
-    row_cls.run = run_label;
-    row_cls.length_class = cls;
-    row_cls.ref_name = ref_name;
-    row_cls.contig_len = contig_len;
-    row_cls.abs_tlen = abs_tlen;
-    row_cls.log10_abs_tlen = lx;
-    row_cls.mapq1 = rec1->core.qual;
-    row_cls.mapq2 = rec2->core.qual;
-    tlen_class_rows.push_back(row_cls);
+	reservoir_add_tlen("ALL", row_all);
+
+	TlenClassRow row_cls;
+	row_cls.run = run_label;
+	row_cls.length_class = cls;
+	row_cls.ref_name = ref_name;
+	row_cls.contig_len = contig_len;
+	row_cls.abs_tlen = abs_tlen;
+	row_cls.log10_abs_tlen = lx;
+	row_cls.mapq1 = rec1->core.qual;
+	row_cls.mapq2 = rec2->core.qual;
+
+	reservoir_add_tlen(cls, row_cls);
 }
 
 void Runner::collect_read_error_data(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
@@ -100,7 +138,7 @@ void Runner::collect_read_error_data(const bam1_t* rec1, const bam1_t* rec2, bam
     row.mapq1 = rec1->core.qual;
     row.mapq2 = rec2->core.qual;
 
-    read_error_rows.push_back(row);
+    reservoir_add_read_error("ALL", row);
 }
 
 uint64_t Runner::get_nm_mismatches(const bam1_t* rec)
@@ -121,15 +159,18 @@ void Runner::write_tlen_class_section(std::ofstream& myfile)
         "run\tclass\tref_name\tcontig_len\tabs_tlen\tlog10_abs_tlen\tmapq1\tmapq2"
     );
 
-    for (const auto& row : tlen_class_rows) {
-        myfile << row.run << "\t"
-               << row.length_class << "\t"
-               << row.ref_name << "\t"
-               << row.contig_len << "\t"
-               << row.abs_tlen << "\t"
-               << row.log10_abs_tlen << "\t"
-               << static_cast<int>(row.mapq1) << "\t"
-               << static_cast<int>(row.mapq2) << "\n";
+    for (const auto& kv : tlen_samples) {
+        const auto& rows = kv.second.rows;
+        for (const auto& row : rows) {
+            myfile << row.run << "\t"
+                   << row.length_class << "\t"
+                   << row.ref_name << "\t"
+                   << row.contig_len << "\t"
+                   << row.abs_tlen << "\t"
+                   << row.log10_abs_tlen << "\t"
+                   << static_cast<int>(row.mapq1) << "\t"
+                   << static_cast<int>(row.mapq2) << "\n";
+        }
     }
 }
 
@@ -141,18 +182,21 @@ void Runner::write_read_error_section(std::ofstream& myfile)
         "run\tref_name\tcontig_len\tread_len1\tread_len2\tnm1\tnm2\tnm_rate1\tnm_rate2\tmapq1\tmapq2"
     );
 
-    for (const auto& row : read_error_rows) {
-        myfile << row.run << "\t"
-               << row.ref_name << "\t"
-               << row.contig_len << "\t"
-               << row.read_len1 << "\t"
-               << row.read_len2 << "\t"
-               << row.nm1 << "\t"
-               << row.nm2 << "\t"
-               << row.nm_rate1 << "\t"
-               << row.nm_rate2 << "\t"
-               << static_cast<int>(row.mapq1) << "\t"
-               << static_cast<int>(row.mapq2) << "\n";
+    for (const auto& kv : read_error_samples) {
+        const auto& rows = kv.second.rows;
+        for (const auto& row : rows) {
+            myfile << row.run << "\t"
+                   << row.ref_name << "\t"
+                   << row.contig_len << "\t"
+                   << row.read_len1 << "\t"
+                   << row.read_len2 << "\t"
+                   << row.nm1 << "\t"
+                   << row.nm2 << "\t"
+                   << row.nm_rate1 << "\t"
+                   << row.nm_rate2 << "\t"
+                   << static_cast<int>(row.mapq1) << "\t"
+                   << static_cast<int>(row.mapq2) << "\n";
+        }
     }
 }
 
@@ -284,11 +328,11 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
 		//	write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
 		}
 
-		if (!tlen_class_rows.empty()) {
+		if (!tlen_samples.empty()) {
     	write_tlen_class_section(myfile);
 		}
 
-		if (!read_error_rows.empty()) {
+		if (!read_error_samples.empty()) {
    			write_read_error_section(myfile);
 		}
 
@@ -1240,8 +1284,8 @@ void Runner::run() {
 		graph.graph_intra_count.clear();
 		graph.graph_inter_count.clear();
 
-		read_error_rows.clear();
-		tlen_class_rows.clear();
+		read_error_samples.clear();
+		tlen_samples.clear();
 
 
 		std::string file = userInput.file('r', i);
