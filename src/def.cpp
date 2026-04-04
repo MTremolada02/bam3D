@@ -690,7 +690,7 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         begin = end;
     }
-	}
+	
 }
 
 double Runner::percentage(std::size_t value, double total) {
