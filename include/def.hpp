@@ -8,6 +8,35 @@
 #include <cstddef>
 #include <algorithm>
 
+//AGGIUNTA PER GRAFICI
+struct TlenClassRow {
+    std::string run;
+    std::string length_class;
+    std::string ref_name;
+    uint64_t contig_len = 0;
+    uint64_t abs_tlen = 0;
+    double log10_abs_tlen = 0.0;
+    uint8_t mapq1 = 0;
+    uint8_t mapq2 = 0;
+};
+
+struct ReadErrorRow {
+    std::string run;
+    std::string ref_name;
+    uint64_t contig_len = 0;
+    uint64_t read_len1 = 0;
+    uint64_t read_len2 = 0;
+    uint64_t nm1 = 0;
+    uint64_t nm2 = 0;
+    double nm_rate1 = 0.0;
+    double nm_rate2 = 0.0;
+    uint8_t mapq1 = 0;
+    uint8_t mapq2 = 0;
+};
+
+
+//////////////////////////////////////////////////////////////////////////////
+
 struct UserInputBam3D : UserInput { // additional input
 	bool hist_none        =false;
 	bool hist_global      = false;
@@ -171,10 +200,20 @@ private:
 
 private:
 
+	std::vector<TlenClassRow> tlen_class_rows;
+	std::vector<ReadErrorRow> read_error_rows;
+
     std::unordered_map<uint64_t,uint64_t> global_dist_count;
     std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
     
 public:
+
+	void collect_tlen_for_ecdf_violin(const bam1_t*, const bam1_t*, bam_hdr_t*, const std::string&);
+	void collect_read_error_data(const bam1_t*, const bam1_t*, bam_hdr_t*, const std::string&);
+	uint64_t Runner::get_nm_mismatches(const bam1_t*);
+	void write_tlen_class_section(std::ofstream&);
+	void write_read_error_section(std::ofstream&);
+
     void loadInput(UserInputBam3D userInput);
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
 	void write_all_stats_file(const std::string&, bam_hdr_t*);
@@ -191,18 +230,23 @@ public:
 //	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);
 	uint16_t Alignstarts(const bam1_t*);
-	void qname_stats(Bam_record_vector &);
+	void qname_stats(Bam_record_vector &, bam_hdr_t*);
+	//void qname_stats(Bam_record_vector &);
 	void flag_inspector(bam1_t*);
 	void histo_global_distance(std::unordered_map<uint64_t, uint64_t>&);
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
     void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
-	void processReads(Bam_record_vector &);
+	void processReads(Bam_record_vector &, bam_hdr_t*);
+	//void processReads(Bam_record_vector &);
 	int Alignend(const bam1_t* b);	
 	int inter_align_gap_on_query(const bam1_t* left_seg, const bam1_t* right_seg);
 	void output();
+	void write_analytics_file(const std::string&);
 	void run();
     
 };
+
+
 
 #endif /* def_hpp */

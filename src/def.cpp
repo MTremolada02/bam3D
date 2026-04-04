@@ -20,6 +20,224 @@
 #include "global.h"
 #include "def.hpp"
 
+void Runner::collect_tlen_for_ecdf_violin(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
+{
+    if (!rec1 || !rec2 || !bamHdr) return;
+
+    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
+    if (rec1->core.tid != rec2->core.tid) return;   // solo stesso contig/scaffold
+
+    int64_t tlen = rec1->core.isize;
+    if (tlen <= 0) return;                          // una sola volta per pair
+
+    uint64_t abs_tlen = static_cast<uint64_t>(tlen);
+    if (abs_tlen == 0) return;
+
+    uint32_t tid = rec1->core.tid;
+    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
+    std::string ref_name = bamHdr->target_name[tid];
+
+    std::string cls;
+    if (contig_len < 10000ULL) cls = "LT10KB";
+    else if (contig_len < 100000ULL) cls = "KB10_100";
+    else if (contig_len < 1000000ULL) cls = "KB100_1MB";
+    else cls = "GE1MB";
+
+    double lx = std::log10(static_cast<double>(abs_tlen));
+
+    TlenClassRow row_all;
+    row_all.run = run_label;
+    row_all.length_class = "ALL";
+    row_all.ref_name = ref_name;
+    row_all.contig_len = contig_len;
+    row_all.abs_tlen = abs_tlen;
+    row_all.log10_abs_tlen = lx;
+    row_all.mapq1 = rec1->core.qual;
+    row_all.mapq2 = rec2->core.qual;
+    tlen_class_rows.push_back(row_all);
+
+    TlenClassRow row_cls;
+    row_cls.run = run_label;
+    row_cls.length_class = cls;
+    row_cls.ref_name = ref_name;
+    row_cls.contig_len = contig_len;
+    row_cls.abs_tlen = abs_tlen;
+    row_cls.log10_abs_tlen = lx;
+    row_cls.mapq1 = rec1->core.qual;
+    row_cls.mapq2 = rec2->core.qual;
+    tlen_class_rows.push_back(row_cls);
+}
+
+void Runner::collect_read_error_data(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
+{
+    if (!rec1 || !rec2 || !bamHdr) return;
+    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
+    if (rec1->core.tid != rec2->core.tid) return;
+
+    uint32_t tid = rec1->core.tid;
+    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
+    std::string ref_name = bamHdr->target_name[tid];
+
+    uint64_t read_len1 = static_cast<uint64_t>(bam_cigar2qlen(rec1->core.n_cigar, bam_get_cigar(rec1)));
+    uint64_t read_len2 = static_cast<uint64_t>(bam_cigar2qlen(rec2->core.n_cigar, bam_get_cigar(rec2)));
+
+    uint64_t nm1 = get_nm_mismatches(rec1);
+    uint64_t nm2 = get_nm_mismatches(rec2);
+
+    double nm_rate1 = (read_len1 > 0) ? static_cast<double>(nm1) / static_cast<double>(read_len1) : 0.0;
+    double nm_rate2 = (read_len2 > 0) ? static_cast<double>(nm2) / static_cast<double>(read_len2) : 0.0;
+
+    ReadErrorRow row;
+    row.run = run_label;
+    row.ref_name = ref_name;
+    row.contig_len = contig_len;
+    row.read_len1 = read_len1;
+    row.read_len2 = read_len2;
+    row.nm1 = nm1;
+    row.nm2 = nm2;
+    row.nm_rate1 = nm_rate1;
+    row.nm_rate2 = nm_rate2;
+    row.mapq1 = rec1->core.qual;
+    row.mapq2 = rec2->core.qual;
+
+    read_error_rows.push_back(row);
+}
+
+uint64_t Runner::get_nm_mismatches(const bam1_t* rec)
+{
+    if (!rec) return 0;
+
+    uint8_t* nm_ptr = bam_aux_get(const_cast<bam1_t*>(rec), "NM");
+    if (!nm_ptr) return 0;
+
+    return static_cast<uint64_t>(bam_aux2i(nm_ptr));
+}
+
+void Runner::write_tlen_class_section(std::ofstream& myfile)
+{
+    write_section_header(
+        myfile,
+        "TLEN_CLASS_RAW",
+        "run\tclass\tref_name\tcontig_len\tabs_tlen\tlog10_abs_tlen\tmapq1\tmapq2"
+    );
+
+    for (const auto& row : tlen_class_rows) {
+        myfile << row.run << "\t"
+               << row.length_class << "\t"
+               << row.ref_name << "\t"
+               << row.contig_len << "\t"
+               << row.abs_tlen << "\t"
+               << row.log10_abs_tlen << "\t"
+               << static_cast<int>(row.mapq1) << "\t"
+               << static_cast<int>(row.mapq2) << "\n";
+    }
+}
+
+void Runner::write_read_error_section(std::ofstream& myfile)
+{
+    write_section_header(
+        myfile,
+        "READ_ERROR_RAW",
+        "run\tref_name\tcontig_len\tread_len1\tread_len2\tnm1\tnm2\tnm_rate1\tnm_rate2\tmapq1\tmapq2"
+    );
+
+    for (const auto& row : read_error_rows) {
+        myfile << row.run << "\t"
+               << row.ref_name << "\t"
+               << row.contig_len << "\t"
+               << row.read_len1 << "\t"
+               << row.read_len2 << "\t"
+               << row.nm1 << "\t"
+               << row.nm2 << "\t"
+               << row.nm_rate1 << "\t"
+               << row.nm_rate2 << "\t"
+               << static_cast<int>(row.mapq1) << "\t"
+               << static_cast<int>(row.mapq2) << "\n";
+    }
+}
+
+//////////////////////////////////////////////////////////////////
+
+void Runner::write_analytics_file(const std::string& out_path) {
+    std::ofstream myfile(out_path, std::ios::out);
+
+    if (!myfile.is_open()) {
+        std::cerr << "cannot open " << out_path << std::endl;
+        return;
+    }
+
+    // Calcolo deviazioni standard e statistiche extra
+    double sd_filtr = sqrt(readStats.quadratic_mean_filtr - pow(readStats.mean_insert_filtr, 2));
+    double sd_tot = std::sqrt(readStats.quadratic_mean - (readStats.mean_insert * readStats.mean_insert));
+    double err_rate = error_rate(readStats.mismatched_bases, readStats.total_mapped_base);
+    std::size_t tot_qname_stats = qnameStats.UU + qnameStats.MM + qnameStats.NN + qnameStats.MU + 
+                                  qnameStats.NU + qnameStats.NM + qnameStats.DD + qnameStats.WW + 
+                                  qnameStats.UR + qnameStats.RU + qnameStats.NR + qnameStats.MR;
+
+    // --- SEZIONE 1: SINGLE READ STATISTICS ---
+    write_section_header(myfile, "SINGLE_READ_STATS", "metric\tvalue");
+    myfile << "Tot_raw_record\t" << readStats.readN << "\n";
+    myfile << "Non_primary\t" << (readStats.secondary + readStats.supplementary) << "\n";
+    myfile << "Primary_read\t" << (readStats.readN - (readStats.secondary + readStats.supplementary)) << "\n";
+    myfile << "Supplementary\t" << readStats.supplementary << "\n";
+    myfile << "Read1\t" << pairStats.read1 << "\n";
+    myfile << "Read2\t" << pairStats.read2 << "\n";
+    myfile << "Reads_mapped\t" << (readStats.readN - readStats.unmapped) << "\n";
+    myfile << "Unmapped\t" << readStats.unmapped << "\n";
+    myfile << "MapQ0\t" << readStats.mapQ0 << "\n";
+    myfile << "Qc_fail\t" << readStats.qc_fail << "\n";
+    myfile << "Insert_size_avg_filt\t" << readStats.mean_insert_filtr << "\n";
+    myfile << "SD_filt\t" << sd_filtr << "\n";
+    myfile << "Insert_size_avg_tot\t" << readStats.mean_insert << "\n";
+    myfile << "SD_tot\t" << sd_tot << "\n";
+    myfile << "Error_rate\t" << err_rate << "\n";
+
+    // --- SEZIONE 2: PAIR READ STATISTICS ---
+    write_section_header(myfile, "PAIR_READ_STATS", "metric\tcount\tpercentage");
+    auto print_pair_row = [&](const std::string& name, long count, long double total) {
+        long double perc = (total > 0) ? (count * 100.0 / total) : 0;
+        myfile << name << "\t" << count << "\t" << perc << "\n";
+    };
+
+    print_pair_row("Pairs_total", pairStats.pairN, pairStats.pairN);
+    print_pair_row("Two_sided_mapped", pairStats.two_side_mapped, pairStats.pairN);
+    print_pair_row("One_sided_mapped", pairStats.one_side, pairStats.pairN);
+    print_pair_row("Unmapped", pairStats.UNmapped, pairStats.pairN);
+    print_pair_row("Proper_pairs", pairStats.proper_pairs, pairStats.pairN);
+    print_pair_row("CIS_on_2sided", pairStats.cis, pairStats.two_side_mapped);
+    print_pair_row("Primary_dupl_on_2sided", pairStats.dupl, pairStats.two_side_mapped);
+    myfile << "Unique_primary\t" << (pairStats.two_side_mapped - pairStats.dupl) << "\t-\n";
+
+    // --- SEZIONE 3: QNAME CATEGORIES ---
+    write_section_header(myfile, "QNAME_CATEGORIES", "category\tcount");
+    myfile << "UU\t" << qnameStats.UU << "\n";
+    myfile << "MM\t" << qnameStats.MM << "\n";
+    myfile << "NN\t" << qnameStats.NN << "\n";
+    myfile << "MU\t" << qnameStats.MU << "\n";
+    myfile << "NU\t" << qnameStats.NU << "\n";
+    myfile << "NM\t" << qnameStats.NM << "\n";
+    myfile << "DD\t" << qnameStats.DD << "\n";
+    myfile << "WW\t" << qnameStats.WW << "\n";
+    myfile << "UR\t" << qnameStats.UR << "\n";
+    myfile << "RU\t" << qnameStats.RU << "\n";
+    myfile << "NR\t" << qnameStats.NR << "\n";
+    myfile << "MR\t" << qnameStats.MR << "\n";
+    myfile << "Total_Qname\t" << tot_qname_stats << "\n";
+
+    // --- SEZIONE 4: DEBUG/FALLBACK STATS ---
+    write_section_header(myfile, "DEBUG_STATS", "metric\tvalue");
+    myfile << "Unresolved\t" << qnameStats.dbg_unresolved << "\n";
+    myfile << "Not_2plus1_WW\t" << qnameStats.dbg_not_2plus1 << "\n";
+    myfile << "Not_3\t" << qnameStats.dbg_not3 << "\n";
+    myfile << "Unmapped_chim_side\t" << qnameStats.dbg_unmapped << "\n";
+    myfile << "Outer_bad_WW\t" << qnameStats.dbg_outer_bad << "\n";
+    myfile << "Geom_pass_R\t" << qnameStats.dbg_geom_pass << "\n";
+    myfile << "Geom_fail_WW\t" << qnameStats.dbg_geom_fail << "\n";
+    myfile << "Fallback\t" << qnameStats.fallback << "\n";
+
+    myfile.close();
+}
+
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
@@ -42,31 +260,39 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
 	//if(userInput.pair_read_stats){ 
 
 		if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
-			write_reference_graph(myfile,bamHdr);
+		//	write_reference_graph(myfile,bamHdr);
 		}
 
 		if (!graph.Ps_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
+		//	write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
 		}
 
 		if (!graph.ff_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
+		//	write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
 		}
 
 		if (!graph.fr_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
+		//	write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
 		}
 
 		if (!graph.rf_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
+		//	write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
 		}
 
 
 		if (!graph.rr_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
+		//	write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
 		}
 
-		write_pair_types_section(myfile);
+		if (!tlen_class_rows.empty()) {
+    	write_tlen_class_section(myfile);
+		}
+
+		if (!read_error_rows.empty()) {
+   			write_read_error_section(myfile);
+		}
+
+		//write_pair_types_section(myfile);
 	//}
 
     myfile.close();
@@ -266,7 +492,7 @@ int Runner::inter_align_gap_on_query(const bam1_t* left_seg, const bam1_t* right
     return right_start - left_end;   // >0 gap, <0 overlap
 }
 
-void Runner::qname_stats(Bam_record_vector &group) {
+void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
     std::size_t begin = 0;
     std::size_t end = 0;
 
@@ -394,7 +620,7 @@ void Runner::qname_stats(Bam_record_vector &group) {
 		if (mapR1 && mapR2) {
 			if(is_dupl) ++pairStats.dupl;
 			++pairStats.two_side_mapped;
-			if (group[primary_r1]->core.tid = group[primary_r2]->core.tid) ++pairStats.cis; 
+			if (group[primary_r1]->core.tid == group[primary_r2]->core.tid) ++pairStats.cis; 
 		}
 		if (mapR1 != mapR2)	++pairStats.one_side;
 		if (!mapR1 && !mapR2) ++pairStats.UNmapped;
@@ -654,6 +880,9 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
         }
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
+			collect_tlen_for_ecdf_violin(group[plot_r1], group[plot_r2], bamHdr, "run1");
+			collect_read_error_data(group[plot_r1], group[plot_r2], bamHdr, "run1");
+
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
 			update_reference_graph(group[plot_r1], group[plot_r2]);
         }
@@ -800,7 +1029,7 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 }
 	
 
-void Runner::processReads(Bam_record_vector &vectorbox) {
+void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 	if(userInput.single_read_stats || userInput.hist_global || userInput.hist_by_chrom){
 
 		uint32_t chrom=0;
@@ -872,7 +1101,7 @@ void Runner::processReads(Bam_record_vector &vectorbox) {
 			}
 		}
 
-		if(userInput.pair_read_stats) qname_stats(vectorbox);
+		if(userInput.pair_read_stats) qname_stats(vectorbox,bamHdr);
 	}
 }
 
@@ -1011,6 +1240,10 @@ void Runner::run() {
 		graph.graph_intra_count.clear();
 		graph.graph_inter_count.clear();
 
+		read_error_rows.clear();
+		tlen_class_rows.clear();
+
+
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
 		
@@ -1049,7 +1282,7 @@ void Runner::run() {
 			}else if(userInput.single_read_stats){
 				data_vector(records_vector,fp_in,bamHdr);
 			}
-			processReads(records_vector);
+			processReads(records_vector, bamHdr);
     	}
 
 //		estimate_insert_stats();
@@ -1058,6 +1291,7 @@ void Runner::run() {
 
     		
 		write_all_stats_file("all_stats.tsv",bamHdr);//!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		write_analytics_file("analiti.tsv");
 		output();
 		
 		bam_hdr_destroy(bamHdr);
