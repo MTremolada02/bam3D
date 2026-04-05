@@ -385,6 +385,10 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
    		//	write_read_error_section(myfile);
 		}
 
+        if (!readStats.insert_hist.empty()) {
+            write_tlen_hist_section(myfile);
+        }
+
     myfile.close();
 }
 
@@ -666,7 +670,26 @@ void Runner::update_reference_graph(const bam1_t* rec1, const bam1_t* rec2) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Runner::write_tlen_hist_section(std::ofstream& myfile)
+{
+    write_section_header(myfile, "TLEN_HIST_RAW", "abs_tlen\tcount");
 
+    std::vector<std::pair<uint32_t, uint64_t>> hist_vec;
+    hist_vec.reserve(readStats.insert_hist.size());
+
+    for (const auto& kv : readStats.insert_hist) {
+        hist_vec.push_back(kv);
+    }
+
+    std::sort(hist_vec.begin(), hist_vec.end(),
+              [](const auto& a, const auto& b) {
+                  return a.first < b.first;
+              });
+
+    for (const auto& kv : hist_vec) {
+        myfile << kv.first << "\t" << kv.second << "\n";
+    }
+}
 
 void Runner::estimate_insert_stats_main_bulk(double main_bulk)
 {
@@ -1335,6 +1358,7 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 
                         uint32_t abs_isize = static_cast<uint32_t>(std::llabs(vectorbox[i]->core.isize));
                         ++readStats.insert_hist[abs_isize];
+
 					}
 
 					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare

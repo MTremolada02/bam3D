@@ -76,6 +76,7 @@ struct UserInputBam3D : UserInput { // additional input
 struct Graph {
 	std::unordered_map<uint32_t, uint64_t> graph_intra_count;
 	std::map<std::pair<uint32_t,uint32_t>, uint64_t> graph_inter_count;
+	std::unordered_map<uint64_t, uint64_t> tlen_binned_count;
 
 	std::unordered_map<uint64_t, uint64_t> Ps_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> ff_binned_dist_count; //forse un po' grande uint_64 
@@ -259,6 +260,8 @@ public:
 	int genomic_sep_bin(uint64_t dist) const;
 	void update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2);
 	void write_strand_orientation_by_distance_section(std::ofstream& myfile);
+
+	void write_tlen_hist_section(std::ofstream&);
 	
 	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint64_t cigar_mapped_bases(const bam1_t*);
