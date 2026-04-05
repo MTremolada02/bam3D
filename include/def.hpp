@@ -82,6 +82,7 @@ struct Graph {
 	std::unordered_map<uint64_t, uint64_t> fr_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rf_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rr_binned_dist_count; 
+	std::array<std::array<uint64_t, 4>, 9> strand_orient_by_sep{};
 
 	std::unordered_map<uint32_t, uint64_t> isize_hist;
 	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin per decade: pow(10.0, 1.0 / 10.0)
@@ -100,11 +101,10 @@ struct ReadStats {
     uint64_t mismatched_bases=0;
     uint64_t total_mapped_base=0;
 	std::size_t av_counter=0;
-	std::size_t avf_counter=0;
-//	std::map<uint32_t, uint64_t> insert_hist; //bin , counter
-//	const uint32_t bin_size = 100;   // 100 bp per bin
-//	uint64_t sd_insert=0;
-//	uint64_t mean_insert=0;
+	std::map<uint32_t, uint64_t> insert_hist; //bin , counter
+	long double mean_insert_bulk99 = 0;
+	long double quadratic_mean_bulk99 = 0;		
+
 
 	long double mean_insert=0;
 	long double quadratic_mean=0;
@@ -247,6 +247,7 @@ public:
 
 
     void loadInput(UserInputBam3D userInput);
+
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
 	void write_all_stats_file(const std::string&, bam_hdr_t*);
 	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
@@ -255,6 +256,11 @@ public:
 	void update_log_binned_distance(uint64_t, std::unordered_map<uint64_t, uint64_t>&);
 	void update_pair_plots_from_records(const bam1_t*, const bam1_t*);
 	void update_reference_graph(const bam1_t*, const bam1_t*);
+	int genomic_sep_bin(uint64_t dist) const;
+	void update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2);
+	void write_strand_orientation_by_distance_section(std::ofstream& myfile);
+	
+	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	double percentage(std::size_t, double);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);

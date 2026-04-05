@@ -257,8 +257,9 @@ void Runner::write_analytics_file(const std::string& out_path) {
     }
 
     // Calcolo deviazioni standard e statistiche extra
-    double sd_filtr = sqrt(readStats.quadratic_mean_filtr - pow(readStats.mean_insert_filtr, 2));
+    
     double sd_tot = std::sqrt(readStats.quadratic_mean - (readStats.mean_insert * readStats.mean_insert));
+    double sd_bulk99 = std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99));
     double err_rate = error_rate(readStats.mismatched_bases, readStats.total_mapped_base);
     std::size_t tot_qname_stats = qnameStats.UU + qnameStats.MM + qnameStats.NN + qnameStats.MU + 
                                   qnameStats.NU + qnameStats.NM + qnameStats.DD + qnameStats.WW + 
@@ -276,10 +277,10 @@ void Runner::write_analytics_file(const std::string& out_path) {
     myfile << "Unmapped\t" << readStats.unmapped << "\n";
     myfile << "MapQ0\t" << readStats.mapQ0 << "\n";
     myfile << "Qc_fail\t" << readStats.qc_fail << "\n";
-    myfile << "Insert_size_avg_filt\t" << readStats.mean_insert_filtr << "\n";
-    myfile << "SD_filt\t" << sd_filtr << "\n";
     myfile << "Insert_size_avg_tot\t" << readStats.mean_insert << "\n";
     myfile << "SD_tot\t" << sd_tot << "\n";
+    myfile << "Insert_size_avg_bulk99\t" << readStats.mean_insert_bulk99 << "\n";
+    myfile << "SD_bulk99\t" << sd_bulk99 << "\n";
     myfile << "Error_rate\t" << err_rate << "\n";
 
     // --- SEZIONE 2: PAIR READ STATISTICS ---
@@ -347,43 +348,42 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
         return;
     }
 
-	//if(userInput.pair_read_stats){ 
-
 		if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
-		//	write_reference_graph(myfile,bamHdr);
+			write_reference_graph(myfile,bamHdr);                                       //node graph
 		}
 
 		if (!graph.Ps_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
+			write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);            //P(s)
 		}
 
 		if (!graph.ff_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
+			write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);            //FF
 		}
 
 		if (!graph.fr_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
+			write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);            //FR
 		}
 
 		if (!graph.rf_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
+			write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);            //RF
 		}
 
 
 		if (!graph.rr_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
+			write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);            //RR
 		}
 
-		if (!tlen_samples.empty()) {
-    	write_tlen_class_section(myfile);
+		write_pair_types_section(myfile);                                               //pairstats_summary
+
+        write_strand_orientation_by_distance_section(myfile);                           //Fraction of read pairs by strand orientation
+
+        if (!tlen_samples.empty()) {
+    	//write_tlen_class_section(myfile);
 		}
 
 		if (!read_error_samples.empty()) {
-   			write_read_error_section(myfile);
+   		//	write_read_error_section(myfile);
 		}
-
-		//write_pair_types_section(myfile);
-	//}
 
     myfile.close();
 }
@@ -504,7 +504,125 @@ void Runner::write_pair_types_section(std::ofstream& myfile)
            << percentage(qnameStats.NN, total_pairs) << "\n";
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Runner::write_strand_orientation_by_distance_section(std::ofstream& myfile)
+{
+    write_section_header(
+        myfile,
+        "STRAND_ORIENTATION_BY_DISTANCE",
+        "run\tdistance_bin\tFF\tFR\tRF\tRR\ttotal\tpFF\tpFR\tpRF\tpRR"
+    );
+
+    const char* labels[9] = {
+        "<100bp",
+        "100-500bp",
+        "0.5-1Kb",
+        "1-2Kb",
+        "2-5Kb",
+        "5-10Kb",
+        "10-15Kb",
+        "15-20Kb",
+        ">20Kb"
+    };
+
+    std::array<uint64_t, 4> combined{0, 0, 0, 0};
+
+    for (int b = 0; b < 9; ++b) {
+        uint64_t FF = graph.strand_orient_by_sep[b][0];
+        uint64_t FR = graph.strand_orient_by_sep[b][1];
+        uint64_t RF = graph.strand_orient_by_sep[b][2];
+        uint64_t RR = graph.strand_orient_by_sep[b][3];
+
+        uint64_t total = FF + FR + RF + RR;
+
+        combined[0] += FF;
+        combined[1] += FR;
+        combined[2] += RF;
+        combined[3] += RR;
+
+        double pFF = (total > 0) ? 100.0 * static_cast<double>(FF) / static_cast<double>(total) : 0.0;
+        double pFR = (total > 0) ? 100.0 * static_cast<double>(FR) / static_cast<double>(total) : 0.0;
+        double pRF = (total > 0) ? 100.0 * static_cast<double>(RF) / static_cast<double>(total) : 0.0;
+        double pRR = (total > 0) ? 100.0 * static_cast<double>(RR) / static_cast<double>(total) : 0.0;
+
+        myfile << "run1" << "\t"
+               << labels[b] << "\t"
+               << FF << "\t"
+               << FR << "\t"
+               << RF << "\t"
+               << RR << "\t"
+               << total << "\t"
+               << pFF << "\t"
+               << pFR << "\t"
+               << pRF << "\t"
+               << pRR << "\n";
+    }
+
+    uint64_t FF = combined[0];
+    uint64_t FR = combined[1];
+    uint64_t RF = combined[2];
+    uint64_t RR = combined[3];
+    uint64_t total = FF + FR + RF + RR;
+
+    double pFF = (total > 0) ? 100.0 * static_cast<double>(FF) / static_cast<double>(total) : 0.0;
+    double pFR = (total > 0) ? 100.0 * static_cast<double>(FR) / static_cast<double>(total) : 0.0;
+    double pRF = (total > 0) ? 100.0 * static_cast<double>(RF) / static_cast<double>(total) : 0.0;
+    double pRR = (total > 0) ? 100.0 * static_cast<double>(RR) / static_cast<double>(total) : 0.0;
+
+    myfile << "run1" << "\t"
+           << "combined" << "\t"
+           << FF << "\t"
+           << FR << "\t"
+           << RF << "\t"
+           << RR << "\t"
+           << total << "\t"
+           << pFF << "\t"
+           << pFR << "\t"
+           << pRF << "\t"
+           << pRR << "\n";
+}
+
+int Runner::genomic_sep_bin(uint64_t dist) const
+{
+    if (dist < 100ULL) return 0;          // <100bp
+    if (dist < 500ULL) return 1;          // 100-500bp
+    if (dist < 1000ULL) return 2;         // 0.5-1Kb
+    if (dist < 2000ULL) return 3;         // 1-2Kb
+    if (dist < 5000ULL) return 4;         // 2-5Kb
+    if (dist < 10000ULL) return 5;        // 5-10Kb
+    if (dist < 15000ULL) return 6;        // 10-15Kb
+    if (dist < 20000ULL) return 7;        // 15-20Kb
+    return 8;                             // >20Kb
+}
+
+void Runner::update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2)
+{
+    if (!rec1 || !rec2) return;
+    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
+    if (rec1->core.tid != rec2->core.tid) return;
+
+    const bam1_t* left = rec1;
+    const bam1_t* right = rec2;
+
+    if (left->core.pos > right->core.pos) {
+        std::swap(left, right);
+    }
+
+    uint64_t dist = static_cast<uint64_t>(right->core.pos - left->core.pos);
+    int bin = genomic_sep_bin(dist);
+    if (bin < 0 || bin >= 9) return;
+
+    bool left_rev  = (left->core.flag  & BAM_FREVERSE);
+    bool right_rev = (right->core.flag & BAM_FREVERSE);
+
+    int orient = 0;
+    if      (!left_rev && !right_rev) orient = 0; // FF
+    else if (!left_rev &&  right_rev) orient = 1; // FR
+    else if ( left_rev && !right_rev) orient = 2; // RF
+    else                              orient = 3; // RR
+
+    ++graph.strand_orient_by_sep[bin][orient];
+}
+
 
 void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* rec2) {
     if (!rec1 || !rec2) return;
@@ -528,6 +646,8 @@ void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* re
     else if ( left_rev && !right_rev) update_log_binned_distance(dist, graph.rf_binned_dist_count);
     else if (!left_rev && !right_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);
     else if ( left_rev &&  right_rev) update_log_binned_distance(dist, graph.rr_binned_dist_count);
+
+    update_strand_orientation_by_distance(left, right);
 }
 
 void Runner::update_reference_graph(const bam1_t* rec1, const bam1_t* rec2) {
@@ -543,6 +663,61 @@ void Runner::update_reference_graph(const bam1_t* rec1, const bam1_t* rec2) {
         uint32_t b = std::max(tid1, tid2);
         ++graph.graph_inter_count[{a, b}];
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void Runner::estimate_insert_stats_main_bulk(double main_bulk)
+{
+    if (readStats.insert_hist.empty()) {
+        readStats.mean_insert_bulk99 = 0.0;
+        readStats.quadratic_mean_bulk99 = 0.0;
+        return;
+    }
+
+    uint64_t total_pairs = 0;
+    for (const auto& kv : readStats.insert_hist) {
+        total_pairs += kv.second;
+    }
+    if (total_pairs == 0) {
+        readStats.mean_insert_bulk99 = 0.0;
+        readStats.quadratic_mean_bulk99 = 0.0;
+        return;
+    }
+
+    uint64_t bulk_pairs = 0;
+    long double weighted_sum = 0.0;
+    uint32_t cutoff_isize = 0;
+
+    for (const auto& kv : readStats.insert_hist) {
+        uint32_t isize = kv.first;
+        uint64_t count = kv.second;
+
+        bulk_pairs += count;
+        weighted_sum += static_cast<long double>(isize) * static_cast<long double>(count);
+        cutoff_isize = isize;
+
+        if (static_cast<long double>(bulk_pairs) / static_cast<long double>(total_pairs) > main_bulk) {
+            break;
+        }
+    }
+
+    long double avg_isize = weighted_sum / static_cast<long double>(bulk_pairs);
+
+    long double variance = 0.0;
+    for (const auto& kv : readStats.insert_hist) {
+        uint32_t isize = kv.first;
+        uint64_t count = kv.second;
+
+        if (isize > cutoff_isize) break;
+
+        long double diff = static_cast<long double>(isize) - avg_isize;
+        variance += static_cast<long double>(count) * diff * diff / static_cast<long double>(bulk_pairs);
+    }
+
+    readStats.mean_insert_bulk99 = avg_isize;
+    readStats.quadratic_mean_bulk99 = variance + avg_isize * avg_isize;
 }
 
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
@@ -1135,18 +1310,15 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 				flag_inspector(vectorbox[i]);
  
 				if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
-					//++pairStats.sameCr;
-					if(((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) && std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti
-						if(std::abs((long double)vectorbox[i]->core.isize)<10000){
-							++readStats.avf_counter;
-							readStats.mean_insert_filtr = update_mean_tlen(readStats.mean_insert_filtr, readStats.avf_counter, vectorbox[i]);
-							readStats.quadratic_mean_filtr=update_quadratic_mean_tlen(readStats.quadratic_mean_filtr,readStats.avf_counter, vectorbox[i]);
-							}
+					if(std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) &&
+
 						++readStats.av_counter;			
 						readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
 						//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
 						readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
-						
+
+                        uint32_t abs_isize = static_cast<uint32_t>(std::llabs(vectorbox[i]->core.isize));
+                        ++readStats.insert_hist[abs_isize];
 					}
 
 					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
@@ -1160,18 +1332,6 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 						++chrom_dist_count[chrom][dist];
 					}
 						
-					/*if(pairStats.good_read1 ){ 
-						bool r1_rev = (vectorbox[i]->core.flag & BAM_FREVERSE);//POTREI USARLI IN TUTTA
-						bool r2_rev = (vectorbox[i]->core.flag & BAM_FMREVERSE);
-
-						update_log_binned_distance(dist,graph.Ps_binned_dist_count); 
-
-						if      (!r1_rev && r2_rev)  update_log_binned_distance(dist, graph.fr_binned_dist_count);// Forward-Reverse (Inward) ---> <---
-						else if (r1_rev && !r2_rev)  update_log_binned_distance(dist, graph.rf_binned_dist_count);// Reverse-Forward (Outward) <--- --->
-						else if (!r1_rev && !r2_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);// Forward-Forward (Same-strand) ----> --->
-						else if (r1_rev && r2_rev) 	 update_log_binned_distance(dist, graph.rr_binned_dist_count);// Reverse-Reverse (Same-strand) <---- <----
-											
-					}*/
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
 			      	// if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
@@ -1211,12 +1371,10 @@ void Runner::output(){
 		std::cout<<"MapQ0: "<<readStats.mapQ0<<std::endl;
 		std::cout<<"Qc_fail: "<<readStats.qc_fail<<std::endl; 
 		std::cout<<"Pairs: "<<pairStats.pairN<<std::endl;
-		std::cout<<"insert_size_avarage_filtred: "<<readStats.mean_insert_filtr<<std::endl;
-		std::cout<<"SD_filtr: "<<sqrt(readStats.quadratic_mean_filtr-pow(readStats.mean_insert_filtr,2))<<std::endl; //rad(<x^2>-<x>^2)
 		std ::cout<<"insert_size_average: "<<readStats.mean_insert<<std::endl;
 		std::cout<<"SD: "<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
-		//std ::cout<<"SD_insert_size:"<<readStats.sd_insert<<std::endl;
-		//std::cout << "insert size average:\t" << readStats.mean_insert << std::endl;
+        std::cout<<"insert_size_average_bulk99: "<<readStats.mean_insert_bulk99<<std::endl;
+        std::cout<<"SD_bulk99: "<<std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99))<<std::endl;
 		std::cout<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
 		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
 		std::cout<<"PAIR READS STATISTICS:"<<std::endl;
@@ -1322,13 +1480,16 @@ void Runner::run() {
 
 		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
 		chrom_dist_count.clear();
+
 		graph.Ps_binned_dist_count.clear();//!!!!!!!!!!!non volgio sia comulativo tra file diversi COME FACCIO SE OGNI FILE OUTPUT MI SOVRASCRIVE QUELLO PERIMA PER PIÙ FILE
 		graph.ff_binned_dist_count.clear();
 		graph.fr_binned_dist_count.clear();
 		graph.rf_binned_dist_count.clear();
 		graph.rr_binned_dist_count.clear();
+        readStats.insert_hist.clear();
 		graph.graph_intra_count.clear();
 		graph.graph_inter_count.clear();
+        graph.strand_orient_by_sep = {};
 
 		read_error_samples.clear();
 		tlen_samples.clear();
@@ -1375,13 +1536,13 @@ void Runner::run() {
 			processReads(records_vector, bamHdr);
     	}
 
-//		estimate_insert_stats();
+		estimate_insert_stats_main_bulk(0.99);
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
     		
-		write_all_stats_file("all_stats.tsv",bamHdr);//!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		write_analytics_file("analiti.tsv");
+		write_all_stats_file("all_stats.tsv",bamHdr);//!!!!!!!!!!!!!!RICORDATI DI TOGLIERE L'HEADER DA OVUNQUE
+		write_analytics_file("summary_stats.tsv");
 		output();
 		
 		bam_hdr_destroy(bamHdr);
