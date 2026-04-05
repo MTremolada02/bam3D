@@ -20,6 +20,34 @@
 #include "global.h"
 #include "def.hpp"
 
+std::string Runner::cigar_to_string(const bam1_t* rec)
+{
+    if (!rec) return "";
+
+    const uint32_t* cigar = bam_get_cigar(rec);
+    std::string out;
+
+    for (uint32_t i = 0; i < rec->core.n_cigar; ++i) {
+        out += std::to_string(bam_cigar_oplen(cigar[i]));
+        out += bam_cigar_opchr(cigar[i]);
+    }
+
+    return out;
+}
+
+std::string Runner::get_md_tag(const bam1_t* rec)
+{
+    if (!rec) return "";
+
+    uint8_t* md_ptr = bam_aux_get(const_cast<bam1_t*>(rec), "MD");
+    if (!md_ptr) return "";
+
+    const char* md = bam_aux2Z(md_ptr);
+    if (!md) return "";
+
+    return std::string(md);
+}
+
 void Runner::reservoir_add_tlen(const std::string& key, const TlenClassRow& row)
 {
     auto& bucket = tlen_samples[key];
@@ -129,18 +157,30 @@ void Runner::collect_read_error_data(const bam1_t* rec1, const bam1_t* rec2, bam
     row.run = run_label;
     row.ref_name = ref_name;
     row.contig_len = contig_len;
+
     row.read_len1 = read_len1;
     row.read_len2 = read_len2;
+
     row.nm1 = nm1;
     row.nm2 = nm2;
+
     row.nm_rate1 = nm_rate1;
     row.nm_rate2 = nm_rate2;
+
     row.mapq1 = rec1->core.qual;
     row.mapq2 = rec2->core.qual;
 
+    row.flag1 = rec1->core.flag;
+    row.flag2 = rec2->core.flag;
+
+    row.cigar1 = cigar_to_string(rec1);
+    row.cigar2 = cigar_to_string(rec2);
+
+    row.md1 = get_md_tag(rec1);
+    row.md2 = get_md_tag(rec2);
+
     reservoir_add_read_error("ALL", row);
 }
-
 uint64_t Runner::get_nm_mismatches(const bam1_t* rec)
 {
     if (!rec) return 0;
@@ -179,7 +219,7 @@ void Runner::write_read_error_section(std::ofstream& myfile)
     write_section_header(
         myfile,
         "READ_ERROR_RAW",
-        "run\tref_name\tcontig_len\tread_len1\tread_len2\tnm1\tnm2\tnm_rate1\tnm_rate2\tmapq1\tmapq2"
+        "run\tref_name\tcontig_len\tread_len1\tread_len2\tnm1\tnm2\tnm_rate1\tnm_rate2\tmapq1\tmapq2\tflag1\tflag2\tcigar1\tcigar2\tmd1\tmd2"
     );
 
     for (const auto& kv : read_error_samples) {
@@ -195,7 +235,13 @@ void Runner::write_read_error_section(std::ofstream& myfile)
                    << row.nm_rate1 << "\t"
                    << row.nm_rate2 << "\t"
                    << static_cast<int>(row.mapq1) << "\t"
-                   << static_cast<int>(row.mapq2) << "\n";
+                   << static_cast<int>(row.mapq2) << "\t"
+                   << row.flag1 << "\t"
+                   << row.flag2 << "\t"
+                   << row.cigar1 << "\t"
+                   << row.cigar2 << "\t"
+                   << row.md1 << "\t"
+                   << row.md2 << "\n";
         }
     }
 }
@@ -913,6 +959,7 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 		 if (a == Maptype::U && b == Maptype::U) {
             plot_r1 = primary_r1;
             plot_r2 = primary_r2;
+			collect_read_error_data(group[primary_r1], group[primary_r2], bamHdr, "run1");
         }
         else if (a == Maptype::R && b == Maptype::U) {
             plot_r1 = outer;   // lato R1 rescued
@@ -925,7 +972,6 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
 			collect_tlen_for_ecdf_violin(group[plot_r1], group[plot_r2], bamHdr, "run1");
-			collect_read_error_data(group[plot_r1], group[plot_r2], bamHdr, "run1");
 
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
 			update_reference_graph(group[plot_r1], group[plot_r2]);

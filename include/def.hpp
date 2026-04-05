@@ -26,14 +26,27 @@ struct ReadErrorRow {
     std::string run;
     std::string ref_name;
     uint64_t contig_len = 0;
+
     uint64_t read_len1 = 0;
     uint64_t read_len2 = 0;
+
     uint64_t nm1 = 0;
     uint64_t nm2 = 0;
+
     double nm_rate1 = 0.0;
     double nm_rate2 = 0.0;
+
     uint8_t mapq1 = 0;
     uint8_t mapq2 = 0;
+
+    uint16_t flag1 = 0;
+    uint16_t flag2 = 0;
+
+    std::string cigar1;
+    std::string cigar2;
+
+    std::string md1;
+    std::string md2;
 };
 
 struct TlenReservoir {
@@ -229,6 +242,8 @@ public:
 	void write_read_error_section(std::ofstream&);
 	void reservoir_add_tlen(const std::string&, const TlenClassRow&);
 	void reservoir_add_read_error(const std::string&, const ReadErrorRow&);
+	std::string cigar_to_string(const bam1_t*);
+	std::string get_md_tag(const bam1_t*);
 
 
     void loadInput(UserInputBam3D userInput);
