@@ -101,7 +101,7 @@ struct ReadStats {
     uint64_t mismatched_bases=0;
     uint64_t total_mapped_base=0;
 	std::size_t av_counter=0;
-	std::map<uint32_t, uint64_t> insert_hist; //bin , counter
+	std::unordered_map<uint32_t, uint64_t> insert_hist; //bin , counter
 	long double mean_insert_bulk99 = 0;
 	long double quadratic_mean_bulk99 = 0;		
 

@@ -676,21 +676,31 @@ void Runner::estimate_insert_stats_main_bulk(double main_bulk)
         return;
     }
 
+    std::vector<std::pair<uint32_t, uint64_t>> hist_vec;
+    hist_vec.reserve(readStats.insert_hist.size());
+
     uint64_t total_pairs = 0;
     for (const auto& kv : readStats.insert_hist) {
+        hist_vec.push_back(kv);
         total_pairs += kv.second;
     }
+
     if (total_pairs == 0) {
         readStats.mean_insert_bulk99 = 0.0;
         readStats.quadratic_mean_bulk99 = 0.0;
         return;
     }
 
+    std::sort(hist_vec.begin(), hist_vec.end(),
+              [](const auto& a, const auto& b) {
+                  return a.first < b.first;
+              });
+
     uint64_t bulk_pairs = 0;
     long double weighted_sum = 0.0;
     uint32_t cutoff_isize = 0;
 
-    for (const auto& kv : readStats.insert_hist) {
+    for (const auto& kv : hist_vec) {
         uint32_t isize = kv.first;
         uint64_t count = kv.second;
 
@@ -703,10 +713,16 @@ void Runner::estimate_insert_stats_main_bulk(double main_bulk)
         }
     }
 
+    if (bulk_pairs == 0) {
+        readStats.mean_insert_bulk99 = 0.0;
+        readStats.quadratic_mean_bulk99 = 0.0;
+        return;
+    }
+
     long double avg_isize = weighted_sum / static_cast<long double>(bulk_pairs);
 
     long double variance = 0.0;
-    for (const auto& kv : readStats.insert_hist) {
+    for (const auto& kv : hist_vec) {
         uint32_t isize = kv.first;
         uint64_t count = kv.second;
 
@@ -1310,7 +1326,7 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 				flag_inspector(vectorbox[i]);
  
 				if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
-					if(std::abs((long double)vectorbox[i]->core.isize)>0){//così hanno sempre orientamenti opposti ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) &&
+					if(std::abs((long double)vectorbox[i]->core.isize)>0 && ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE))){//così hanno sempre orientamenti opposti ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) &&
 
 						++readStats.av_counter;			
 						readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
@@ -1536,7 +1552,7 @@ void Runner::run() {
 			processReads(records_vector, bamHdr);
     	}
 
-		estimate_insert_stats_main_bulk(0.99);
+		estimate_insert_stats_main_bulk(0.90);
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
