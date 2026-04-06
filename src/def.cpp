@@ -20,6 +20,17 @@
 #include "global.h"
 #include "def.hpp"
 
+void Runner::update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map)
+{
+    if (tlen == 0) return;
+
+    uint32_t bin_index = static_cast<uint32_t>(
+        std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
+    );
+
+    ++specific_map[bin_index];
+}
+
 std::string Runner::cigar_to_string(const bam1_t* rec)
 {
     if (!rec) return "";
@@ -82,6 +93,36 @@ void Runner::reservoir_add_read_error(const std::string& key, const ReadErrorRow
     if (j < max_sample_per_class) {
         bucket.rows[static_cast<std::size_t>(j)] = row;
     }
+}
+
+void Runner::collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr)
+{
+    if (!rec1 || !rec2 || !bamHdr) return;
+
+    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
+    if (rec1->core.tid != rec2->core.tid) return;
+
+    int64_t tlen = rec1->core.isize;
+    if (tlen <= 0) return;   // una sola volta per pair
+
+    uint64_t abs_tlen = static_cast<uint64_t>(tlen);
+    if (abs_tlen == 0) return;
+
+    uint32_t tid = rec1->core.tid;
+    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
+
+    std::string cls;
+    if (contig_len >= 10000ULL && contig_len < 100000ULL) {
+        cls = "10KB_100KB";
+    } else if (contig_len >= 100000ULL && contig_len < 1000000ULL) {
+        cls = "100KB_1MB";
+    } else if (contig_len >= 1000000ULL) {
+        cls = "GT1MB";
+    } else {
+        return; // sotto 10 kb non li consideri
+    }
+
+    update_log_binned_tlen(abs_tlen, tlen_binned_by_contig_class[cls]);
 }
 
 void Runner::collect_tlen_for_ecdf_violin(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
@@ -191,7 +232,7 @@ uint64_t Runner::get_nm_mismatches(const bam1_t* rec)
     return static_cast<uint64_t>(bam_aux2i(nm_ptr));
 }
 
-void Runner::write_tlen_class_section(std::ofstream& myfile)
+/*void Runner::write_tlen_class_section(std::ofstream& myfile)
 {
     write_section_header(
         myfile,
@@ -210,6 +251,55 @@ void Runner::write_tlen_class_section(std::ofstream& myfile)
                    << row.log10_abs_tlen << "\t"
                    << static_cast<int>(row.mapq1) << "\t"
                    << static_cast<int>(row.mapq2) << "\n";
+        }
+    }
+}
+*/
+void Runner::write_tlen_binned_by_contig_class_section(std::ofstream& myfile)
+{
+    const std::vector<std::string> classes = {
+        "10KB_100KB",
+        "100KB_1MB",
+        "GT1MB"
+    };
+
+    for (const auto& cls : classes) {
+        write_section_header(
+            myfile,
+            "TLEN_BINNED_" + cls,
+            "bin_start\tbin_end\tcount"
+        );
+
+        auto it = tlen_binned_by_contig_class.find(cls);
+        if (it == tlen_binned_by_contig_class.end()) continue;
+
+        std::vector<std::pair<uint32_t, uint64_t>> entries(
+            it->second.begin(),
+            it->second.end()
+        );
+
+        std::sort(entries.begin(), entries.end(),
+                  [](const auto& a, const auto& b) {
+                      return a.first < b.first;
+                  });
+
+        for (const auto& kv : entries) {
+            uint32_t bin_index = kv.first;
+            uint64_t count = kv.second;
+
+            uint64_t bin_start = static_cast<uint64_t>(
+                std::floor(std::pow(graph.log_bin_factor, bin_index))
+            );
+            uint64_t bin_end = static_cast<uint64_t>(
+                std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
+            ) - 1;
+
+            if (bin_start < 1) bin_start = 1;
+            if (bin_end < bin_start) bin_end = bin_start;
+
+            myfile << bin_start << "\t"
+                   << bin_end << "\t"
+                   << count << "\n";
         }
     }
 }
@@ -349,44 +439,48 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
     }
 
 		if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
-			write_reference_graph(myfile,bamHdr);                                       //node graph
+		//	write_reference_graph(myfile,bamHdr);                                       //node graph!
 		}
 
 		if (!graph.Ps_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);            //P(s)
+		//	write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);            //P(s)!
 		}
 
 		if (!graph.ff_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);            //FF
+		//	write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);            //FF!
 		}
 
 		if (!graph.fr_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);            //FR
+		//	write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);            //FR!
 		}
 
 		if (!graph.rf_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);            //RF
+		//	write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);            //RF!
 		}
 
 
 		if (!graph.rr_binned_dist_count.empty()) {
-			write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);            //RR
+		//	write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);            //RR!
 		}
 
-		write_pair_types_section(myfile);                                               //pairstats_summary
+		write_pair_types_section(myfile);                                               //pairstats_summary!
 
         write_strand_orientation_by_distance_section(myfile);                           //Fraction of read pairs by strand orientation
 
         if (!tlen_samples.empty()) {
-    	//write_tlen_class_section(myfile);
+    	//write_tlen_class_section(myfile);                            //non llo so sinc
 		}
 
 		if (!read_error_samples.empty()) {
-   		//	write_read_error_section(myfile);
+   		//	write_read_error_section(myfile);                            //errori
 		}
 
-        if (!readStats.insert_hist.empty()) {
-            write_tlen_hist_section(myfile);
+        if (!readStats.insert_hist_binned.empty()) {
+         //   write_tlen_hist_section(myfile);                           //stessa cosa di quello ma sotto ma solo uno.(sarà da eliminaereperchè inutile)
+        }
+
+        if (!tlen_binned_by_contig_class.empty()) {
+            write_tlen_binned_by_contig_class_section(myfile);
         }
 
     myfile.close();
@@ -672,12 +766,12 @@ void Runner::update_reference_graph(const bam1_t* rec1, const bam1_t* rec2) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Runner::write_tlen_hist_section(std::ofstream& myfile)
 {
-    write_section_header(myfile, "TLEN_HIST_RAW", "abs_tlen\tcount");
+    write_section_header(myfile, "TLEN_HIST_BINNED", "bin_start\tbin_end\tcount");
 
     std::vector<std::pair<uint32_t, uint64_t>> hist_vec;
-    hist_vec.reserve(readStats.insert_hist.size());
+    hist_vec.reserve(readStats.insert_hist_binned.size());
 
-    for (const auto& kv : readStats.insert_hist) {
+    for (const auto& kv : readStats.insert_hist_binned) {
         hist_vec.push_back(kv);
     }
 
@@ -687,23 +781,32 @@ void Runner::write_tlen_hist_section(std::ofstream& myfile)
               });
 
     for (const auto& kv : hist_vec) {
-        myfile << kv.first << "\t" << kv.second << "\n";
+        uint32_t bin_idx = kv.first;
+        uint64_t count   = kv.second;
+
+        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx)));
+        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx + 1))) - 1;
+
+        if (bin_start < 1) bin_start = 1;
+        if (bin_end < bin_start) bin_end = bin_start;
+
+        myfile << bin_start << "\t" << bin_end << "\t" << count << "\n";
     }
 }
 
 void Runner::estimate_insert_stats_main_bulk(double main_bulk)
 {
-    if (readStats.insert_hist.empty()) {
+    if (readStats.insert_hist_binned.empty()) {
         readStats.mean_insert_bulk99 = 0.0;
         readStats.quadratic_mean_bulk99 = 0.0;
         return;
     }
 
     std::vector<std::pair<uint32_t, uint64_t>> hist_vec;
-    hist_vec.reserve(readStats.insert_hist.size());
+    hist_vec.reserve(readStats.insert_hist_binned.size());
 
     uint64_t total_pairs = 0;
-    for (const auto& kv : readStats.insert_hist) {
+    for (const auto& kv : readStats.insert_hist_binned) {
         hist_vec.push_back(kv);
         total_pairs += kv.second;
     }
@@ -721,15 +824,23 @@ void Runner::estimate_insert_stats_main_bulk(double main_bulk)
 
     uint64_t bulk_pairs = 0;
     long double weighted_sum = 0.0;
-    uint32_t cutoff_isize = 0;
+    uint32_t cutoff_bin = 0;
 
     for (const auto& kv : hist_vec) {
-        uint32_t isize = kv.first;
-        uint64_t count = kv.second;
+        uint32_t bin_idx = kv.first;
+        uint64_t count   = kv.second;
+
+        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx)));
+        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx + 1))) - 1;
+
+        if (bin_start < 1) bin_start = 1;
+        if (bin_end < bin_start) bin_end = bin_start;
+
+        long double rep_value = std::sqrt((long double)bin_start * (long double)bin_end);
 
         bulk_pairs += count;
-        weighted_sum += static_cast<long double>(isize) * static_cast<long double>(count);
-        cutoff_isize = isize;
+        weighted_sum += rep_value * static_cast<long double>(count);
+        cutoff_bin = bin_idx;
 
         if (static_cast<long double>(bulk_pairs) / static_cast<long double>(total_pairs) > main_bulk) {
             break;
@@ -745,20 +856,36 @@ void Runner::estimate_insert_stats_main_bulk(double main_bulk)
     long double avg_isize = weighted_sum / static_cast<long double>(bulk_pairs);
 
     long double variance = 0.0;
+
     for (const auto& kv : hist_vec) {
-        uint32_t isize = kv.first;
-        uint64_t count = kv.second;
+        uint32_t bin_idx = kv.first;
+        uint64_t count   = kv.second;
 
-        if (isize > cutoff_isize) break;
+        if (bin_idx > cutoff_bin) break;
 
-        long double diff = static_cast<long double>(isize) - avg_isize;
+        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx)));
+        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx + 1))) - 1;
+
+        if (bin_start < 1) bin_start = 1;
+        if (bin_end < bin_start) bin_end = bin_start;
+
+        long double rep_value = std::sqrt((long double)bin_start * (long double)bin_end);
+        long double diff = rep_value - avg_isize;
+
         variance += static_cast<long double>(count) * diff * diff / static_cast<long double>(bulk_pairs);
     }
 
     readStats.mean_insert_bulk99 = avg_isize;
     readStats.quadratic_mean_bulk99 = variance + avg_isize * avg_isize;
 }
+uint32_t Runner::tlen_bin_index(uint64_t tlen) const
+{
+    if (tlen < 1) return 0;
 
+    return static_cast<uint32_t>(
+        std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
+    );
+}
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
 	const uint32_t* cigar = bam_get_cigar(b);
@@ -1185,7 +1312,8 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
         }
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
-			collect_tlen_for_ecdf_violin(group[plot_r1], group[plot_r2], bamHdr, "run1");
+			//collect_tlen_for_ecdf_violin(group[plot_r1], group[plot_r2], bamHdr, "run1");
+            collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);
 
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
 			update_reference_graph(group[plot_r1], group[plot_r2]);
@@ -1356,8 +1484,9 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 						//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
 						readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
 
-                        uint32_t abs_isize = static_cast<uint32_t>(std::llabs(vectorbox[i]->core.isize));
-                        ++readStats.insert_hist[abs_isize];
+                        uint64_t abs_isize = static_cast<uint64_t>(std::llabs(vectorbox[i]->core.isize));
+                        uint32_t bin_idx = tlen_bin_index(abs_isize);
+                        ++readStats.insert_hist_binned[bin_idx];
 
 					}
 
@@ -1526,7 +1655,7 @@ void Runner::run() {
 		graph.fr_binned_dist_count.clear();
 		graph.rf_binned_dist_count.clear();
 		graph.rr_binned_dist_count.clear();
-        readStats.insert_hist.clear();
+        readStats.insert_hist_binned.clear();
 		graph.graph_intra_count.clear();
 		graph.graph_inter_count.clear();
         graph.strand_orient_by_sep = {};

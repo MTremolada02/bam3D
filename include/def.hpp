@@ -102,7 +102,7 @@ struct ReadStats {
     uint64_t mismatched_bases=0;
     uint64_t total_mapped_base=0;
 	std::size_t av_counter=0;
-	std::unordered_map<uint32_t, uint64_t> insert_hist; //bin , counter
+	std::unordered_map<uint32_t, uint64_t> insert_hist_binned;
 	long double mean_insert_bulk99 = 0;
 	long double quadratic_mean_bulk99 = 0;		
 
@@ -225,6 +225,7 @@ private:
 
 private:
 
+	std::unordered_map<std::string, std::unordered_map<uint32_t, uint64_t>> tlen_binned_by_contig_class;
 	std::unordered_map<std::string, TlenReservoir> tlen_samples;
 	std::unordered_map<std::string, ReadErrorReservoir> read_error_samples;
 	std::mt19937_64 rng{42};
@@ -260,8 +261,13 @@ public:
 	int genomic_sep_bin(uint64_t dist) const;
 	void update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2);
 	void write_strand_orientation_by_distance_section(std::ofstream& myfile);
+	void update_log_binned_tlen(uint64_t, std::unordered_map<uint32_t, uint64_t>& );
+	void collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr);
+	void write_tlen_binned_by_contig_class_section(std::ofstream& myfile);
 
 	void write_tlen_hist_section(std::ofstream&);
+
+	uint32_t tlen_bin_index(uint64_t) const;
 	
 	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint64_t cigar_mapped_bases(const bam1_t*);
