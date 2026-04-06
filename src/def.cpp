@@ -1439,7 +1439,7 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 		++pairStats.pairN;
 
 		if(flag & BAM_FDUP) {++pairStats.duplicated;} //WARNING! se c'è solo una read1 ma segnata come duplicato così non la conto nelle rad (basta toglier l'else if)
-		else if (flag & BAM_FREAD1) { // così ne prendo solo una e non due non so se ha senso
+		if (flag & BAM_FREAD1) { // così ne prendo solo una e non due non so se ha senso
 			++pairStats.read1;
 
 			//if ((flag & BAM_FUNMAP && !(flag & BAM_FMUNMAP))^(flag & BAM_FMUNMAP && !(flag & BAM_FUNMAP))) {++pairStats.UMone_sided;} // statistica fatta sul singolo se no è doppia
@@ -1512,11 +1512,6 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 						readStats.total_mapped_base += aligned;
 					} 
 				}
-
-				if ((readStats.readN % 2) == 0) {
-					pairStats.pairN=readStats.readN/2;
-				} else {pairStats.pairN += (readStats.readN % 2) * 2 >= 2 ? 1 : 0;} //arromtonda all'intero più vicino 
-				//readStats.error_rate=error_rate(mismatched_bases,total_base);
 			}
 		}
 
