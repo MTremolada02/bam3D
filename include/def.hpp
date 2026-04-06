@@ -94,6 +94,7 @@ struct ReadStats {
     uint64_t readN  = 0;
     uint64_t qc_fail = 0;
     uint64_t unmapped = 0;
+	uint64_t primary_mapped = 0;
     uint64_t secondary = 0;
     uint64_t supplementary = 0;
     uint64_t primary = 0;

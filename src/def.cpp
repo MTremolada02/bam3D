@@ -1420,7 +1420,7 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 	uint16_t flag= bamdata-> core.flag;
 
 	//sui singoli record
-
+    if(flag & BAM_FDUP) {++pairStats.duplicated;}
 	if (flag & BAM_FQCFAIL){++readStats.qc_fail;} //return?
 	if (flag & BAM_FUNMAP) {++readStats.unmapped;} //così i mapped sono di tutti come in samtools ma ho la richiesta una volta sola e non dentro e fuori dall'else
 	if (flag & BAM_FPROPER_PAIR) {++pairStats.proper_pairs;}
@@ -1437,8 +1437,9 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 	
 	if(flag & BAM_FPAIRED || flag & BAM_FPROPER_PAIR) {
 		++pairStats.pairN;
+        if(!(flag & BAM_FUNMAP)) ++readStats.primary_mapped;
 
-		if(flag & BAM_FDUP) {++pairStats.duplicated;} //WARNING! se c'è solo una read1 ma segnata come duplicato così non la conto nelle rad (basta toglier l'else if)
+		 //WARNING! se c'è solo una read1 ma segnata come duplicato così non la conto nelle rad (basta toglier l'else if)
 		if (flag & BAM_FREAD1) { // così ne prendo solo una e non due non so se ha senso
 			++pairStats.read1;
 
@@ -1529,6 +1530,7 @@ void Runner::output(){
 		std::cout<<"Read1: "<<pairStats.read1<<std::endl;
 		std::cout<<"Read2: "<<pairStats.read2<<std::endl;
 		std::cout<<"Reads_mapped: "<<readStats.readN-readStats.unmapped<<std::endl;
+        std::cout<<"Primary_mapped: "<<readStats.primary_mapped<<std::endl;
 		std::cout<<"Unmapped: "<<readStats.unmapped<<std::endl;        
 		std::cout<<"Proper_pairs: "<<pairStats.proper_pairs<<std::endl;;
 		std::cout<<"Record_duplicated: "<<pairStats.duplicated<<std::endl;
