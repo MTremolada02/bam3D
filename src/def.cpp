@@ -438,9 +438,9 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
         return;
     }
 
-		if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
-		//	write_reference_graph(myfile,bamHdr);                                       //node graph!
-		}
+		//if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
+		//	write_reference_graph(myfile,bamHdr);                                       //GRAFO
+		//}
 
 		if (!graph.Ps_binned_dist_count.empty()) {
 		//	write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);            //P(s)!
@@ -467,21 +467,21 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
 
         write_strand_orientation_by_distance_section(myfile);                           //Fraction of read pairs by strand orientation
 
-        if (!tlen_samples.empty()) {
+        //if (!tlen_samples.empty()) {
     	//write_tlen_class_section(myfile);                            //non llo so sinc
-		}
+		//}
 
-		if (!read_error_samples.empty()) {
+		//if (!read_error_samples.empty()) {
    		//	write_read_error_section(myfile);                            //errori
-		}
+		//}
 
-        if (!readStats.insert_hist_binned.empty()) {
+        //if (!readStats.insert_hist_binned.empty()) {
          //   write_tlen_hist_section(myfile);                           //stessa cosa di quello ma sotto ma solo uno.(sarà da eliminaereperchè inutile)
-        }
+        //}
 
-        if (!tlen_binned_by_contig_class.empty()) {
-            write_tlen_binned_by_contig_class_section(myfile);
-        }
+        //if (!tlen_binned_by_contig_class.empty()) {
+        //    write_tlen_binned_by_contig_class_section(myfile);
+        //}
 
     myfile.close();
 }
@@ -1313,10 +1313,10 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
 			//collect_tlen_for_ecdf_violin(group[plot_r1], group[plot_r2], bamHdr, "run1");
-            collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);
+            //collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);////////////////////////////////////////
 
-            update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
-			update_reference_graph(group[plot_r1], group[plot_r2]);
+            update_pair_plots_from_records(group[plot_r1], group[plot_r2]); //grafo
+			//update_reference_graph(group[plot_r1], group[plot_r2]);//grafo
         }
         // -------------------------
         // 6) classificazione finale
@@ -1587,14 +1587,6 @@ void Runner::output(){
 		std::cout << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
 		std::cout << "fall back: " << qnameStats.fallback << "\n";
 
-std::cout<<"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"<<std::endl;
-		std::cout<<"mapped:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))-readStats.unmapped<<std::endl;
-                std::cout<<"%mapped:"<< 100-((readStats.unmapped*100)/(long double)readStats.readN-(readStats.secondary+readStats.supplementary))<<"%"<<std::endl; 
-                std::cout<<"%MapQ0:"<< ((readStats.mapQ0*100)/(long double)(readStats.readN-(readStats.secondary+readStats.supplementary)))<<"%"<<std::endl;
-                std::cout<<"MapQ0:"<<readStats.mapQ0<<std::endl;
-                std::cout<<"Pairs:"<<(readStats.readN-(readStats.secondary+readStats.supplementary))/2<<std::endl;
-                std::cout<<"Pairs_tot_veri?"<<(readStats.readN)/2<<std::endl; 
-
 	}
 
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
@@ -1652,13 +1644,13 @@ void Runner::run() {
 		graph.fr_binned_dist_count.clear();
 		graph.rf_binned_dist_count.clear();
 		graph.rr_binned_dist_count.clear();
-        readStats.insert_hist_binned.clear();
-		graph.graph_intra_count.clear();
-		graph.graph_inter_count.clear();
+        //readStats.insert_hist_binned.clear();
+		//graph.graph_intra_count.clear();
+		//graph.graph_inter_count.clear();
         graph.strand_orient_by_sep = {};
 
-		read_error_samples.clear();
-		tlen_samples.clear();
+		//read_error_samples.clear();
+		//tlen_samples.clear();
 
 
 		std::string file = userInput.file('r', i);
