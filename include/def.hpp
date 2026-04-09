@@ -8,59 +8,6 @@
 #include <cstddef>
 #include <algorithm>
 
-#include <random>
-
-//AGGIUNTA PER GRAFICI
-struct TlenClassRow {
-    std::string run;
-    std::string length_class;
-    std::string ref_name;
-    uint64_t contig_len = 0;
-    uint64_t abs_tlen = 0;
-    double log10_abs_tlen = 0.0;
-    uint8_t mapq1 = 0;
-    uint8_t mapq2 = 0;
-};
-
-struct ReadErrorRow {
-    std::string run;
-    std::string ref_name;
-    uint64_t contig_len = 0;
-
-    uint64_t read_len1 = 0;
-    uint64_t read_len2 = 0;
-
-    uint64_t nm1 = 0;
-    uint64_t nm2 = 0;
-
-    double nm_rate1 = 0.0;
-    double nm_rate2 = 0.0;
-
-    uint8_t mapq1 = 0;
-    uint8_t mapq2 = 0;
-
-    uint16_t flag1 = 0;
-    uint16_t flag2 = 0;
-
-    std::string cigar1;
-    std::string cigar2;
-
-    std::string md1;
-    std::string md2;
-};
-
-struct TlenReservoir {
-    std::vector<TlenClassRow> rows;
-    uint64_t seen = 0;
-};
-
-struct ReadErrorReservoir {
-    std::vector<ReadErrorRow> rows;
-    uint64_t seen = 0;
-};
-
-//////////////////////////////////////////////////////////////////////////////
-
 struct UserInputBam3D : UserInput { // additional input
 	bool hist_none        =false;
 	bool hist_global      = false;
@@ -74,16 +21,11 @@ struct UserInputBam3D : UserInput { // additional input
 };
 
 struct Graph {
-	std::unordered_map<uint32_t, uint64_t> graph_intra_count;
-	std::map<std::pair<uint32_t,uint32_t>, uint64_t> graph_inter_count;
-	std::unordered_map<uint64_t, uint64_t> tlen_binned_count;
-
 	std::unordered_map<uint64_t, uint64_t> Ps_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> ff_binned_dist_count; //forse un po' grande uint_64 
 	std::unordered_map<uint64_t, uint64_t> fr_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rf_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rr_binned_dist_count; 
-	std::array<std::array<uint64_t, 4>, 9> strand_orient_by_sep{};
 
 	std::unordered_map<uint32_t, uint64_t> isize_hist;
 	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin per decade: pow(10.0, 1.0 / 10.0)
@@ -94,24 +36,28 @@ struct ReadStats {
     uint64_t readN  = 0;
     uint64_t qc_fail = 0;
     uint64_t unmapped = 0;
-	uint64_t primary_mapped = 0;
     uint64_t secondary = 0;
     uint64_t supplementary = 0;
     uint64_t primary = 0;
     uint64_t mapQ0 = 0;
+	uint64_t primary_mapped = 0;
 
     uint64_t mismatched_bases=0;
     uint64_t total_mapped_base=0;
 	std::size_t av_counter=0;
-	std::unordered_map<uint32_t, uint64_t> insert_hist_binned;
-	long double mean_insert_bulk99 = 0;
-	long double quadratic_mean_bulk99 = 0;		
-
+	std::size_t avf_counter=0;
+//	std::map<uint32_t, uint64_t> insert_hist; //bin , counter
+//	const uint32_t bin_size = 100;   // 100 bp per bin
+//	uint64_t sd_insert=0;
+//	uint64_t mean_insert=0;
 
 	long double mean_insert=0;
 	long double quadratic_mean=0;
 	long double mean_insert_filtr=0;
 	long double quadratic_mean_filtr=0;
+	long double mean_insert_bulk99 = 0;
+	long double quadratic_mean_bulk99 = 0;	
+	std::unordered_map<uint32_t, uint64_t> insert_hist_binned;
 
 	double error_rate=0;
 };
@@ -226,75 +172,39 @@ private:
 
 private:
 
-	std::unordered_map<std::string, std::unordered_map<uint32_t, uint64_t>> tlen_binned_by_contig_class;
-	std::unordered_map<std::string, TlenReservoir> tlen_samples;
-	std::unordered_map<std::string, ReadErrorReservoir> read_error_samples;
-	std::mt19937_64 rng{42};
-	std::size_t max_sample_per_class = 50000;	
-
-
     std::unordered_map<uint64_t,uint64_t> global_dist_count;
     std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
     
 public:
-
-	void collect_tlen_for_ecdf_violin(const bam1_t*, const bam1_t*, bam_hdr_t*, const std::string&);
-	void collect_read_error_data(const bam1_t*, const bam1_t*, bam_hdr_t*, const std::string&);
-	uint64_t get_nm_mismatches(const bam1_t*);
-	void write_tlen_class_section(std::ofstream&);
-	void write_read_error_section(std::ofstream&);
-	void reservoir_add_tlen(const std::string&, const TlenClassRow&);
-	void reservoir_add_read_error(const std::string&, const ReadErrorRow&);
-	std::string cigar_to_string(const bam1_t*);
-	std::string get_md_tag(const bam1_t*);
-
-
     void loadInput(UserInputBam3D userInput);
-
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
-	void write_all_stats_file(const std::string&, bam_hdr_t*);
+	void write_all_stats_file(const std::string&);
 	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
 	void write_pair_types_section(std::ofstream&);
-	void write_reference_graph(std::ofstream&, bam_hdr_t*);
 	void update_log_binned_distance(uint64_t, std::unordered_map<uint64_t, uint64_t>&);
 	void update_pair_plots_from_records(const bam1_t*, const bam1_t*);
-	void update_reference_graph(const bam1_t*, const bam1_t*);
-	int genomic_sep_bin(uint64_t dist) const;
-	void update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2);
-	void write_strand_orientation_by_distance_section(std::ofstream& myfile);
-	void update_log_binned_tlen(uint64_t, std::unordered_map<uint32_t, uint64_t>& );
-	void collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr);
-	void write_tlen_binned_by_contig_class_section(std::ofstream& myfile);
-
-	void write_tlen_hist_section(std::ofstream&);
-
-	uint32_t tlen_bin_index(uint64_t) const;
-	
-	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	double percentage(std::size_t, double);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
+	void estimate_insert_stats_main_bulk(double main_bulk);
+	uint32_t tlen_bin_index(uint64_t) const;
+
 //	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);
 	uint16_t Alignstarts(const bam1_t*);
-	void qname_stats(Bam_record_vector &, bam_hdr_t*);
-	//void qname_stats(Bam_record_vector &);
+	void qname_stats(Bam_record_vector &,bam_hdr_t*);
 	void flag_inspector(bam1_t*);
 	void histo_global_distance(std::unordered_map<uint64_t, uint64_t>&);
 	void histo_chrom_distance(std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>&); 
     void data_vector(Bam_record_vector &,samFile *,bam_hdr_t *);
 	void data_vector(Bam_record_vector &, bam1_t *,bool &, samFile *, bam_hdr_t *);
-	void processReads(Bam_record_vector &, bam_hdr_t*);
-	//void processReads(Bam_record_vector &);
+	void processReads(Bam_record_vector &,bam_hdr_t *);
 	int Alignend(const bam1_t* b);	
 	int inter_align_gap_on_query(const bam1_t* left_seg, const bam1_t* right_seg);
 	void output();
-	void write_analytics_file(const std::string&);
 	void run();
     
 };
-
-
 
 #endif /* def_hpp */

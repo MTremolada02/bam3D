@@ -20,405 +20,6 @@
 #include "global.h"
 #include "def.hpp"
 
-void Runner::update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map)
-{
-    if (tlen == 0) return;
-
-    uint32_t bin_index = static_cast<uint32_t>(
-        std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
-    );
-
-    ++specific_map[bin_index];
-}
-
-std::string Runner::cigar_to_string(const bam1_t* rec)
-{
-    if (!rec) return "";
-
-    const uint32_t* cigar = bam_get_cigar(rec);
-    std::string out;
-
-    for (uint32_t i = 0; i < rec->core.n_cigar; ++i) {
-        out += std::to_string(bam_cigar_oplen(cigar[i]));
-        out += bam_cigar_opchr(cigar[i]);
-    }
-
-    return out;
-}
-
-std::string Runner::get_md_tag(const bam1_t* rec)
-{
-    if (!rec) return "";
-
-    uint8_t* md_ptr = bam_aux_get(const_cast<bam1_t*>(rec), "MD");
-    if (!md_ptr) return "";
-
-    const char* md = bam_aux2Z(md_ptr);
-    if (!md) return "";
-
-    return std::string(md);
-}
-
-void Runner::reservoir_add_tlen(const std::string& key, const TlenClassRow& row)
-{
-    auto& bucket = tlen_samples[key];
-    bucket.seen++;
-
-    if (bucket.rows.size() < max_sample_per_class) {
-        bucket.rows.push_back(row);
-        return;
-    }
-
-    std::uniform_int_distribution<uint64_t> dist(0, bucket.seen - 1);
-    uint64_t j = dist(rng);
-
-    if (j < max_sample_per_class) {
-        bucket.rows[static_cast<std::size_t>(j)] = row;
-    }
-}
-
-void Runner::reservoir_add_read_error(const std::string& key, const ReadErrorRow& row)
-{
-    auto& bucket = read_error_samples[key];
-    bucket.seen++;
-
-    if (bucket.rows.size() < max_sample_per_class) {
-        bucket.rows.push_back(row);
-        return;
-    }
-
-    std::uniform_int_distribution<uint64_t> dist(0, bucket.seen - 1);
-    uint64_t j = dist(rng);
-
-    if (j < max_sample_per_class) {
-        bucket.rows[static_cast<std::size_t>(j)] = row;
-    }
-}
-
-void Runner::collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr)
-{
-    if (!rec1 || !rec2 || !bamHdr) return;
-
-    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
-    if (rec1->core.tid != rec2->core.tid) return;
-
-    int64_t tlen = rec1->core.isize;
-    if (tlen <= 0) return;   // una sola volta per pair
-
-    uint64_t abs_tlen = static_cast<uint64_t>(tlen);
-    if (abs_tlen == 0) return;
-
-    uint32_t tid = rec1->core.tid;
-    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
-
-    std::string cls;
-    if (contig_len >= 10000ULL && contig_len < 100000ULL) {
-        cls = "10KB_100KB";
-    } else if (contig_len >= 100000ULL && contig_len < 1000000ULL) {
-        cls = "100KB_1MB";
-    } else if (contig_len >= 1000000ULL) {
-        cls = "GT1MB";
-    } else {
-        return; // sotto 10 kb non li consideri
-    }
-
-    update_log_binned_tlen(abs_tlen, tlen_binned_by_contig_class[cls]);
-}
-
-void Runner::collect_tlen_for_ecdf_violin(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
-{
-    if (!rec1 || !rec2 || !bamHdr) return;
-
-    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
-    if (rec1->core.tid != rec2->core.tid) return;   // solo stesso contig/scaffold
-
-    int64_t tlen = rec1->core.isize;
-    if (tlen <= 0) return;                          // una sola volta per pair
-
-    uint64_t abs_tlen = static_cast<uint64_t>(tlen);
-    if (abs_tlen == 0) return;
-
-    uint32_t tid = rec1->core.tid;
-    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
-    std::string ref_name = bamHdr->target_name[tid];
-
-    std::string cls;
-    if (contig_len < 10000ULL) cls = "LT10KB";
-    else if (contig_len < 100000ULL) cls = "KB10_100";
-    else if (contig_len < 1000000ULL) cls = "KB100_1MB";
-    else cls = "GE1MB";
-
-    double lx = std::log10(static_cast<double>(abs_tlen));
-
-    TlenClassRow row_all;
-	row_all.run = run_label;
-	row_all.length_class = "ALL";
-	row_all.ref_name = ref_name;
-	row_all.contig_len = contig_len;
-	row_all.abs_tlen = abs_tlen;
-	row_all.log10_abs_tlen = lx;
-	row_all.mapq1 = rec1->core.qual;
-	row_all.mapq2 = rec2->core.qual;
-
-	reservoir_add_tlen("ALL", row_all);
-
-	TlenClassRow row_cls;
-	row_cls.run = run_label;
-	row_cls.length_class = cls;
-	row_cls.ref_name = ref_name;
-	row_cls.contig_len = contig_len;
-	row_cls.abs_tlen = abs_tlen;
-	row_cls.log10_abs_tlen = lx;
-	row_cls.mapq1 = rec1->core.qual;
-	row_cls.mapq2 = rec2->core.qual;
-
-	reservoir_add_tlen(cls, row_cls);
-}
-
-void Runner::collect_read_error_data(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr, const std::string& run_label)
-{
-    if (!rec1 || !rec2 || !bamHdr) return;
-    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
-    if (rec1->core.tid != rec2->core.tid) return;
-
-    uint32_t tid = rec1->core.tid;
-    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
-    std::string ref_name = bamHdr->target_name[tid];
-
-    uint64_t read_len1 = static_cast<uint64_t>(bam_cigar2qlen(rec1->core.n_cigar, bam_get_cigar(rec1)));
-    uint64_t read_len2 = static_cast<uint64_t>(bam_cigar2qlen(rec2->core.n_cigar, bam_get_cigar(rec2)));
-
-    uint64_t nm1 = get_nm_mismatches(rec1);
-    uint64_t nm2 = get_nm_mismatches(rec2);
-
-    double nm_rate1 = (read_len1 > 0) ? static_cast<double>(nm1) / static_cast<double>(read_len1) : 0.0;
-    double nm_rate2 = (read_len2 > 0) ? static_cast<double>(nm2) / static_cast<double>(read_len2) : 0.0;
-
-    ReadErrorRow row;
-    row.run = run_label;
-    row.ref_name = ref_name;
-    row.contig_len = contig_len;
-
-    row.read_len1 = read_len1;
-    row.read_len2 = read_len2;
-
-    row.nm1 = nm1;
-    row.nm2 = nm2;
-
-    row.nm_rate1 = nm_rate1;
-    row.nm_rate2 = nm_rate2;
-
-    row.mapq1 = rec1->core.qual;
-    row.mapq2 = rec2->core.qual;
-
-    row.flag1 = rec1->core.flag;
-    row.flag2 = rec2->core.flag;
-
-    row.cigar1 = cigar_to_string(rec1);
-    row.cigar2 = cigar_to_string(rec2);
-
-    row.md1 = get_md_tag(rec1);
-    row.md2 = get_md_tag(rec2);
-
-    reservoir_add_read_error("ALL", row);
-}
-uint64_t Runner::get_nm_mismatches(const bam1_t* rec)
-{
-    if (!rec) return 0;
-
-    uint8_t* nm_ptr = bam_aux_get(const_cast<bam1_t*>(rec), "NM");
-    if (!nm_ptr) return 0;
-
-    return static_cast<uint64_t>(bam_aux2i(nm_ptr));
-}
-
-/*void Runner::write_tlen_class_section(std::ofstream& myfile)
-{
-    write_section_header(
-        myfile,
-        "TLEN_CLASS_RAW",
-        "run\tclass\tref_name\tcontig_len\tabs_tlen\tlog10_abs_tlen\tmapq1\tmapq2"
-    );
-
-    for (const auto& kv : tlen_samples) {
-        const auto& rows = kv.second.rows;
-        for (const auto& row : rows) {
-            myfile << row.run << "\t"
-                   << row.length_class << "\t"
-                   << row.ref_name << "\t"
-                   << row.contig_len << "\t"
-                   << row.abs_tlen << "\t"
-                   << row.log10_abs_tlen << "\t"
-                   << static_cast<int>(row.mapq1) << "\t"
-                   << static_cast<int>(row.mapq2) << "\n";
-        }
-    }
-}
-*/
-void Runner::write_tlen_binned_by_contig_class_section(std::ofstream& myfile)
-{
-    const std::vector<std::string> classes = {
-        "10KB_100KB",
-        "100KB_1MB",
-        "GT1MB"
-    };
-
-    for (const auto& cls : classes) {
-        write_section_header(
-            myfile,
-            "TLEN_BINNED_" + cls,
-            "bin_start\tbin_end\tcount"
-        );
-
-        auto it = tlen_binned_by_contig_class.find(cls);
-        if (it == tlen_binned_by_contig_class.end()) continue;
-
-        std::vector<std::pair<uint32_t, uint64_t>> entries(
-            it->second.begin(),
-            it->second.end()
-        );
-
-        std::sort(entries.begin(), entries.end(),
-                  [](const auto& a, const auto& b) {
-                      return a.first < b.first;
-                  });
-
-        for (const auto& kv : entries) {
-            uint32_t bin_index = kv.first;
-            uint64_t count = kv.second;
-
-            uint64_t bin_start = static_cast<uint64_t>(
-                std::floor(std::pow(graph.log_bin_factor, bin_index))
-            );
-            uint64_t bin_end = static_cast<uint64_t>(
-                std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
-            ) - 1;
-
-            if (bin_start < 1) bin_start = 1;
-            if (bin_end < bin_start) bin_end = bin_start;
-
-            myfile << bin_start << "\t"
-                   << bin_end << "\t"
-                   << count << "\n";
-        }
-    }
-}
-
-void Runner::write_read_error_section(std::ofstream& myfile)
-{
-    write_section_header(
-        myfile,
-        "READ_ERROR_RAW",
-        "run\tref_name\tcontig_len\tread_len1\tread_len2\tnm1\tnm2\tnm_rate1\tnm_rate2\tmapq1\tmapq2\tflag1\tflag2\tcigar1\tcigar2\tmd1\tmd2"
-    );
-
-    for (const auto& kv : read_error_samples) {
-        const auto& rows = kv.second.rows;
-        for (const auto& row : rows) {
-            myfile << row.run << "\t"
-                   << row.ref_name << "\t"
-                   << row.contig_len << "\t"
-                   << row.read_len1 << "\t"
-                   << row.read_len2 << "\t"
-                   << row.nm1 << "\t"
-                   << row.nm2 << "\t"
-                   << row.nm_rate1 << "\t"
-                   << row.nm_rate2 << "\t"
-                   << static_cast<int>(row.mapq1) << "\t"
-                   << static_cast<int>(row.mapq2) << "\t"
-                   << row.flag1 << "\t"
-                   << row.flag2 << "\t"
-                   << row.cigar1 << "\t"
-                   << row.cigar2 << "\t"
-                   << row.md1 << "\t"
-                   << row.md2 << "\n";
-        }
-    }
-}
-
-//////////////////////////////////////////////////////////////////
-
-void Runner::write_analytics_file(const std::string& out_path) {
-    std::ofstream myfile(out_path, std::ios::out);
-
-    if (!myfile.is_open()) {
-        std::cerr << "cannot open " << out_path << std::endl;
-        return;
-    }
-
-    // Calcolo deviazioni standard e statistiche extra
-    
-    double sd_tot = std::sqrt(readStats.quadratic_mean - (readStats.mean_insert * readStats.mean_insert));
-    double sd_bulk99 = std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99));
-    double err_rate = error_rate(readStats.mismatched_bases, readStats.total_mapped_base);
-    std::size_t tot_qname_stats = qnameStats.UU + qnameStats.MM + qnameStats.NN + qnameStats.MU + 
-                                  qnameStats.NU + qnameStats.NM + qnameStats.DD + qnameStats.WW + 
-                                  qnameStats.UR + qnameStats.RU + qnameStats.NR + qnameStats.MR;
-
-    // --- SEZIONE 1: SINGLE READ STATISTICS ---
-    write_section_header(myfile, "SINGLE_READ_STATS", "metric\tvalue");
-    myfile << "Tot_raw_record\t" << readStats.readN << "\n";
-    myfile << "Non_primary\t" << (readStats.secondary + readStats.supplementary) << "\n";
-    myfile << "Primary_read\t" << (readStats.readN - (readStats.secondary + readStats.supplementary)) << "\n";
-    myfile << "Supplementary\t" << readStats.supplementary << "\n";
-    myfile << "Read1\t" << pairStats.read1 << "\n";
-    myfile << "Read2\t" << pairStats.read2 << "\n";
-    myfile << "Reads_mapped\t" << (readStats.readN - readStats.unmapped) << "\n";
-    myfile << "Unmapped\t" << readStats.unmapped << "\n";
-    myfile << "MapQ0\t" << readStats.mapQ0 << "\n";
-    myfile << "Qc_fail\t" << readStats.qc_fail << "\n";
-    myfile << "Insert_size_avg_tot\t" << readStats.mean_insert << "\n";
-    myfile << "SD_tot\t" << sd_tot << "\n";
-    myfile << "Insert_size_avg_bulk99\t" << readStats.mean_insert_bulk99 << "\n";
-    myfile << "SD_bulk99\t" << sd_bulk99 << "\n";
-    myfile << "Error_rate\t" << err_rate << "\n";
-
-    // --- SEZIONE 2: PAIR READ STATISTICS ---
-    write_section_header(myfile, "PAIR_READ_STATS", "metric\tcount\tpercentage");
-    auto print_pair_row = [&](const std::string& name, long count, long double total) {
-        long double perc = (total > 0) ? (count * 100.0 / total) : 0;
-        myfile << name << "\t" << count << "\t" << perc << "\n";
-    };
-
-    print_pair_row("Pairs_total", pairStats.pairN, pairStats.pairN);
-    print_pair_row("Two_sided_mapped", pairStats.two_side_mapped, pairStats.pairN);
-    print_pair_row("One_sided_mapped", pairStats.one_side, pairStats.pairN);
-    print_pair_row("Unmapped", pairStats.UNmapped, pairStats.pairN);
-    print_pair_row("Proper_pairs", pairStats.proper_pairs, pairStats.pairN);
-    print_pair_row("CIS_on_2sided", pairStats.cis, pairStats.two_side_mapped);
-    print_pair_row("Primary_dupl_on_2sided", pairStats.dupl, pairStats.two_side_mapped);
-    myfile << "Unique_primary\t" << (pairStats.two_side_mapped - pairStats.dupl) << "\t-\n";
-
-    // --- SEZIONE 3: QNAME CATEGORIES ---
-    write_section_header(myfile, "QNAME_CATEGORIES", "category\tcount");
-    myfile << "UU\t" << qnameStats.UU << "\n";
-    myfile << "MM\t" << qnameStats.MM << "\n";
-    myfile << "NN\t" << qnameStats.NN << "\n";
-    myfile << "MU\t" << qnameStats.MU << "\n";
-    myfile << "NU\t" << qnameStats.NU << "\n";
-    myfile << "NM\t" << qnameStats.NM << "\n";
-    myfile << "DD\t" << qnameStats.DD << "\n";
-    myfile << "WW\t" << qnameStats.WW << "\n";
-    myfile << "UR\t" << qnameStats.UR << "\n";
-    myfile << "RU\t" << qnameStats.RU << "\n";
-    myfile << "NR\t" << qnameStats.NR << "\n";
-    myfile << "MR\t" << qnameStats.MR << "\n";
-    myfile << "Total_Qname\t" << tot_qname_stats << "\n";
-
-    // --- SEZIONE 4: DEBUG/FALLBACK STATS ---
-    write_section_header(myfile, "DEBUG_STATS", "metric\tvalue");
-    myfile << "Unresolved\t" << qnameStats.dbg_unresolved << "\n";
-    myfile << "Not_2plus1_WW\t" << qnameStats.dbg_not_2plus1 << "\n";
-    myfile << "Not_3\t" << qnameStats.dbg_not3 << "\n";
-    myfile << "Unmapped_chim_side\t" << qnameStats.dbg_unmapped << "\n";
-    myfile << "Outer_bad_WW\t" << qnameStats.dbg_outer_bad << "\n";
-    myfile << "Geom_pass_R\t" << qnameStats.dbg_geom_pass << "\n";
-    myfile << "Geom_fail_WW\t" << qnameStats.dbg_geom_fail << "\n";
-    myfile << "Fallback\t" << qnameStats.fallback << "\n";
-
-    myfile.close();
-}
-
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
@@ -429,7 +30,7 @@ void Runner::write_section_header(std::ofstream& myfile, const std::string& sect
     myfile << columns_line << "\n";
 }
 
-void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
+void Runner::write_all_stats_file(const std::string& out_path)
 {
     std::ofstream myfile(out_path, std::ios::out);
 
@@ -438,50 +39,30 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
         return;
     }
 
-		//if (!graph.graph_inter_count.empty() || !graph.graph_intra_count.empty()) {
-		//	write_reference_graph(myfile,bamHdr);                                       //GRAFO
-		//}
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);
+    }
 
-		if (!graph.Ps_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_PS", graph.Ps_binned_dist_count);            //P(s)!
-		}
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);
+    }
 
-		if (!graph.ff_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_FF", graph.ff_binned_dist_count);            //FF!
-		}
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);
+    }
 
-		if (!graph.fr_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_FR", graph.fr_binned_dist_count);            //FR!
-		}
-
-		if (!graph.rf_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);            //RF!
-		}
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_RF", graph.rf_binned_dist_count);
+    }
 
 
-		if (!graph.rr_binned_dist_count.empty()) {
-		//	write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);            //RR!
-		}
+	if (!graph.Ps_binned_dist_count.empty()) {
+        write_binned_map(myfile, "DIST_RR", graph.rr_binned_dist_count);
+    }
 
-		write_pair_types_section(myfile);                                               //pairstats_summary!
-
-        write_strand_orientation_by_distance_section(myfile);                           //Fraction of read pairs by strand orientation
-
-        //if (!tlen_samples.empty()) {
-    	//write_tlen_class_section(myfile);                            //non llo so sinc
-		//}
-
-		//if (!read_error_samples.empty()) {
-   		//	write_read_error_section(myfile);                            //errori
-		//}
-
-        //if (!readStats.insert_hist_binned.empty()) {
-         //   write_tlen_hist_section(myfile);                           //stessa cosa di quello ma sotto ma solo uno.(sarà da eliminaereperchè inutile)
-        //}
-
-        //if (!tlen_binned_by_contig_class.empty()) {
-        //    write_tlen_binned_by_contig_class_section(myfile);
-        //}
+	if(userInput.pair_read_stats) { 
+		write_pair_types_section(myfile);
+	}
 
     myfile.close();
 }
@@ -489,30 +70,6 @@ void Runner::write_all_stats_file(const std::string& out_path,bam_hdr_t* bamHdr)
 
 //GRAPHS
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Runner::write_reference_graph(std::ofstream& myfile, bam_hdr_t* bamHdr) {
-    //nodes
-    write_section_header(myfile, "GRAPH_NODES", "id\tname\tlength\tintra_count");
-
-    for (int32_t tid = 0; tid < bamHdr->n_targets; ++tid) {
-        uint64_t intra = 0;
-        auto it = graph.graph_intra_count.find(tid);
-        if (it != graph.graph_intra_count.end()) intra = it->second;
-
-        myfile << tid << "\t" << bamHdr->target_name[tid] << "\t" << bamHdr->target_len[tid] << "\t"<< intra << "\n";
-    }
-    
-    // archi
-    write_section_header(myfile, "GRAPH_EDGES", "source\ttarget\tinter_count");
-
-    for (const auto& kv : graph.graph_inter_count) {
-        uint32_t source = kv.first.first;
-        uint32_t target = kv.first.second;
-        uint64_t count  = kv.second;
-
-        myfile << source << "\t" << target << "\t" << count << "\n";
-    }
-}
-
 void Runner::write_binned_map(std::ofstream& myfile, const std::string& section_name, const std::unordered_map<uint64_t, uint64_t>& data_map)
 {
     write_section_header(myfile, section_name, "bin_start\tbin_end\tcount\tcount_per_bp\tcount_fraction");
@@ -602,125 +159,7 @@ void Runner::write_pair_types_section(std::ofstream& myfile)
            << percentage(qnameStats.NN, total_pairs) << "\n";
 }
 
-void Runner::write_strand_orientation_by_distance_section(std::ofstream& myfile)
-{
-    write_section_header(
-        myfile,
-        "STRAND_ORIENTATION_BY_DISTANCE",
-        "run\tdistance_bin\tFF\tFR\tRF\tRR\ttotal\tpFF\tpFR\tpRF\tpRR"
-    );
-
-    const char* labels[9] = {
-        "<100bp",
-        "100-500bp",
-        "0.5-1Kb",
-        "1-2Kb",
-        "2-5Kb",
-        "5-10Kb",
-        "10-15Kb",
-        "15-20Kb",
-        ">20Kb"
-    };
-
-    std::array<uint64_t, 4> combined{0, 0, 0, 0};
-
-    for (int b = 0; b < 9; ++b) {
-        uint64_t FF = graph.strand_orient_by_sep[b][0];
-        uint64_t FR = graph.strand_orient_by_sep[b][1];
-        uint64_t RF = graph.strand_orient_by_sep[b][2];
-        uint64_t RR = graph.strand_orient_by_sep[b][3];
-
-        uint64_t total = FF + FR + RF + RR;
-
-        combined[0] += FF;
-        combined[1] += FR;
-        combined[2] += RF;
-        combined[3] += RR;
-
-        double pFF = (total > 0) ? 100.0 * static_cast<double>(FF) / static_cast<double>(total) : 0.0;
-        double pFR = (total > 0) ? 100.0 * static_cast<double>(FR) / static_cast<double>(total) : 0.0;
-        double pRF = (total > 0) ? 100.0 * static_cast<double>(RF) / static_cast<double>(total) : 0.0;
-        double pRR = (total > 0) ? 100.0 * static_cast<double>(RR) / static_cast<double>(total) : 0.0;
-
-        myfile << "run1" << "\t"
-               << labels[b] << "\t"
-               << FF << "\t"
-               << FR << "\t"
-               << RF << "\t"
-               << RR << "\t"
-               << total << "\t"
-               << pFF << "\t"
-               << pFR << "\t"
-               << pRF << "\t"
-               << pRR << "\n";
-    }
-
-    uint64_t FF = combined[0];
-    uint64_t FR = combined[1];
-    uint64_t RF = combined[2];
-    uint64_t RR = combined[3];
-    uint64_t total = FF + FR + RF + RR;
-
-    double pFF = (total > 0) ? 100.0 * static_cast<double>(FF) / static_cast<double>(total) : 0.0;
-    double pFR = (total > 0) ? 100.0 * static_cast<double>(FR) / static_cast<double>(total) : 0.0;
-    double pRF = (total > 0) ? 100.0 * static_cast<double>(RF) / static_cast<double>(total) : 0.0;
-    double pRR = (total > 0) ? 100.0 * static_cast<double>(RR) / static_cast<double>(total) : 0.0;
-
-    myfile << "run1" << "\t"
-           << "combined" << "\t"
-           << FF << "\t"
-           << FR << "\t"
-           << RF << "\t"
-           << RR << "\t"
-           << total << "\t"
-           << pFF << "\t"
-           << pFR << "\t"
-           << pRF << "\t"
-           << pRR << "\n";
-}
-
-int Runner::genomic_sep_bin(uint64_t dist) const
-{
-    if (dist < 100ULL) return 0;          // <100bp
-    if (dist < 500ULL) return 1;          // 100-500bp
-    if (dist < 1000ULL) return 2;         // 0.5-1Kb
-    if (dist < 2000ULL) return 3;         // 1-2Kb
-    if (dist < 5000ULL) return 4;         // 2-5Kb
-    if (dist < 10000ULL) return 5;        // 5-10Kb
-    if (dist < 15000ULL) return 6;        // 10-15Kb
-    if (dist < 20000ULL) return 7;        // 15-20Kb
-    return 8;                             // >20Kb
-}
-
-void Runner::update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2)
-{
-    if (!rec1 || !rec2) return;
-    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
-    if (rec1->core.tid != rec2->core.tid) return;
-
-    const bam1_t* left = rec1;
-    const bam1_t* right = rec2;
-
-    if (left->core.pos > right->core.pos) {
-        std::swap(left, right);
-    }
-
-    uint64_t dist = static_cast<uint64_t>(right->core.pos - left->core.pos);
-    int bin = genomic_sep_bin(dist);
-    if (bin < 0 || bin >= 9) return;
-
-    bool left_rev  = (left->core.flag  & BAM_FREVERSE);
-    bool right_rev = (right->core.flag & BAM_FREVERSE);
-
-    int orient = 0;
-    if      (!left_rev && !right_rev) orient = 0; // FF
-    else if (!left_rev &&  right_rev) orient = 1; // FR
-    else if ( left_rev && !right_rev) orient = 2; // RF
-    else                              orient = 3; // RR
-
-    ++graph.strand_orient_by_sep[bin][orient];
-}
-
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* rec2) {
     if (!rec1 || !rec2) return;
@@ -744,54 +183,6 @@ void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* re
     else if ( left_rev && !right_rev) update_log_binned_distance(dist, graph.rf_binned_dist_count);
     else if (!left_rev && !right_rev) update_log_binned_distance(dist, graph.ff_binned_dist_count);
     else if ( left_rev &&  right_rev) update_log_binned_distance(dist, graph.rr_binned_dist_count);
-
-    update_strand_orientation_by_distance(left, right);
-}
-
-void Runner::update_reference_graph(const bam1_t* rec1, const bam1_t* rec2) {
-    if (!rec1 || !rec2) return;
-
-    uint32_t tid1 = rec1->core.tid;
-    uint32_t tid2 = rec2->core.tid;
-
-    if (tid1 == tid2) {
-        ++graph.graph_intra_count[tid1];
-    } else {
-        uint32_t a = std::min(tid1, tid2);
-        uint32_t b = std::max(tid1, tid2);
-        ++graph.graph_inter_count[{a, b}];
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Runner::write_tlen_hist_section(std::ofstream& myfile)
-{
-    write_section_header(myfile, "TLEN_HIST_BINNED", "bin_start\tbin_end\tcount");
-
-    std::vector<std::pair<uint32_t, uint64_t>> hist_vec;
-    hist_vec.reserve(readStats.insert_hist_binned.size());
-
-    for (const auto& kv : readStats.insert_hist_binned) {
-        hist_vec.push_back(kv);
-    }
-
-    std::sort(hist_vec.begin(), hist_vec.end(),
-              [](const auto& a, const auto& b) {
-                  return a.first < b.first;
-              });
-
-    for (const auto& kv : hist_vec) {
-        uint32_t bin_idx = kv.first;
-        uint64_t count   = kv.second;
-
-        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx)));
-        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx + 1))) - 1;
-
-        if (bin_start < 1) bin_start = 1;
-        if (bin_end < bin_start) bin_end = bin_start;
-
-        myfile << bin_start << "\t" << bin_end << "\t" << count << "\n";
-    }
 }
 
 void Runner::estimate_insert_stats_main_bulk(double main_bulk)
@@ -878,6 +269,7 @@ void Runner::estimate_insert_stats_main_bulk(double main_bulk)
     readStats.mean_insert_bulk99 = avg_isize;
     readStats.quadratic_mean_bulk99 = variance + avg_isize * avg_isize;
 }
+
 uint32_t Runner::tlen_bin_index(uint64_t tlen) const
 {
     if (tlen < 1) return 0;
@@ -886,6 +278,7 @@ uint32_t Runner::tlen_bin_index(uint64_t tlen) const
         std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
     );
 }
+
 //se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
 uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
 	const uint32_t* cigar = bam_get_cigar(b);
@@ -1041,13 +434,6 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
             }
         }
 
-		if(is_dupl) {
-			++qnameStats.DD;
-			begin=end;
-			continue;
-		}
-
-
 		if (mapR1 && mapR2) {
 			if(is_dupl) ++pairStats.dupl;
 			++pairStats.two_side_mapped;
@@ -1056,11 +442,11 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
 		if (mapR1 != mapR2)	++pairStats.one_side;
 		if (!mapR1 && !mapR2) ++pairStats.UNmapped;
 
-		if(is_dupl) {
-                	++qnameStats.DD;
-                	begin=end;
-        		continue;
-        	}
+        if(is_dupl) {
+			++qnameStats.DD;
+			begin=end;
+			continue;
+		}
 
 
         bool r1_has_null = (r1_all.size() > r1_mapped.size());
@@ -1300,7 +686,6 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 		 if (a == Maptype::U && b == Maptype::U) {
             plot_r1 = primary_r1;
             plot_r2 = primary_r2;
-			collect_read_error_data(group[primary_r1], group[primary_r2], bamHdr, "run1");
         }
         else if (a == Maptype::R && b == Maptype::U) {
             plot_r1 = outer;   // lato R1 rescued
@@ -1312,11 +697,7 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
         }
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
-			//collect_tlen_for_ecdf_violin(group[plot_r1], group[plot_r2], bamHdr, "run1");
-            //collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);////////////////////////////////////////
-
-            update_pair_plots_from_records(group[plot_r1], group[plot_r2]); //grafo
-			//update_reference_graph(group[plot_r1], group[plot_r2]);//grafo
+            update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
         }
         // -------------------------
         // 6) classificazione finale
@@ -1521,6 +902,7 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 }
 
 
+
 void Runner::output(){
 		std::cout<<"SINGLE READ STATISTICS:"<<std::endl;
 		std::cout<<"Tot_raw_record: "<<readStats.readN<<std::endl;
@@ -1592,7 +974,7 @@ void Runner::output(){
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
 	vectorbox.clear();
 	for (int i=0; i<vectorbox.get_size_wanted();++i){ 
-		if(!vectorbox.add_record(fp_in,bamHdr)) break;
+		if(!vectorbox.add_record(fp_in,bamHdr))break;	
 	}
 }
 
@@ -1604,7 +986,7 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 
 	for (int i=0;i<vectorbox.get_size_wanted();++i){
 		if(bridge){
-			if(first){
+			if(first){//:( come faccio
 				vectorbox.add_record(fp_in,bamHdr);
 				first =false;
 			}else{
@@ -1638,20 +1020,11 @@ void Runner::run() {
 
 		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
 		chrom_dist_count.clear();
-
 		graph.Ps_binned_dist_count.clear();//!!!!!!!!!!!non volgio sia comulativo tra file diversi COME FACCIO SE OGNI FILE OUTPUT MI SOVRASCRIVE QUELLO PERIMA PER PIÙ FILE
 		graph.ff_binned_dist_count.clear();
 		graph.fr_binned_dist_count.clear();
 		graph.rf_binned_dist_count.clear();
 		graph.rr_binned_dist_count.clear();
-        //readStats.insert_hist_binned.clear();
-		//graph.graph_intra_count.clear();
-		//graph.graph_inter_count.clear();
-        graph.strand_orient_by_sep = {};
-
-		//read_error_samples.clear();
-		//tlen_samples.clear();
-
 
 		std::string file = userInput.file('r', i);
 		std::string ext = getFileExt(file);
@@ -1694,13 +1067,12 @@ void Runner::run() {
 			processReads(records_vector, bamHdr);
     	}
 
-		estimate_insert_stats_main_bulk(0.90);
+//		estimate_insert_stats();
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
     		
-		write_all_stats_file("all_stats.tsv",bamHdr);//!!!!!!!!!!!!!!RICORDATI DI TOGLIERE L'HEADER DA OVUNQUE
-		write_analytics_file("summary_stats.tsv");
+		write_all_stats_file("all_stats.tsv");//!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		output();
 		
 		bam_hdr_destroy(bamHdr);
@@ -1822,37 +1194,3 @@ void Bam_record_vector::expand(std::size_t new_capacity) {
 		slots.push_back(b);
     }
 }
-
-/*bool is_overlapping(bam1_t *a, bam1_t *b, int32_t max_overlap = 20) { 
-    auto get_query_bounds = [](bam1_t *rec, int32_t &q_start, int32_t &q_end) {
-        uint32_t *cigar = bam_get_cigar(rec);
-        q_start = 0;
-        q_end = 0;
-        
-        // Il "Soft Clipping" (op 4) all'inizio ci dice dove inizia il match sulla read
-        if (bam_cigar_op(cigar[0]) == BAM_CSOFT_CLIP) {
-            q_start = bam_cigar_oplen(cigar[0]);
-        }
-        
-        // Calcoliamo la fine sommando la lunghezza consumata sulla query dal CIGAR
-        int32_t query_consumed = 0;
-        for (uint32_t i = 0; i < rec->core.n_cigar; ++i) {
-            if (bam_cigar_type(bam_cigar_op(cigar[i])) & 1) { // Consuma query (M, I, S)
-                query_consumed += bam_cigar_oplen(cigar[i]);
-            }
-        }
-        q_end = q_start + query_consumed;
-    };
-
-    int32_t start_a, end_a, start_b, end_b;
-    get_query_bounds(a, start_a, end_a);
-    get_query_bounds(b, start_b, end_b);
-
-    // Calcolo dell'intersezione tra i due intervalli [start, end]
-    int32_t overlap_start = std::max(start_a, start_b);
-    int32_t overlap_end = std::min(end_a, end_b);
-    int32_t overlap_len = overlap_end - overlap_start;
-
-    // Se l'overlap è maggiore della soglia, sono sovrapposti (quindi NON è una chimera pulita)
-    return (overlap_len > max_overlap);
-}*/
