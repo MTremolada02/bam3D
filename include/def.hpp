@@ -57,7 +57,7 @@ struct ReadStats {
 	long double quadratic_mean_filtr=0;
 	long double mean_insert_bulk99 = 0;
 	long double quadratic_mean_bulk99 = 0;	
-	std::unordered_map<uint32_t, uint64_t> insert_hist_binned;
+	std::vector<uint64_t> insert_hist_binned;
 
 	double error_rate=0;
 };

@@ -185,89 +185,88 @@ void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* re
     else if ( left_rev &&  right_rev) update_log_binned_distance(dist, graph.rr_binned_dist_count);
 }
 
-void Runner::estimate_insert_stats_main_bulk(double main_bulk)
+void Runner::estimate_insert_stats_main_bulk(double rel_height)
 {
-    if (readStats.insert_hist_binned.empty()) {
-        readStats.mean_insert_bulk99 = 0.0;
-        readStats.quadratic_mean_bulk99 = 0.0;
+    const auto& hist = readStats.insert_hist_binned;
+
+    if (hist.empty()) {
+        readStats.mean_insert_bulk99 = 0.0L;
+        readStats.quadratic_mean_bulk99 = 0.0L;
         return;
     }
 
-    std::vector<std::pair<uint32_t, uint64_t>> hist_vec;
-    hist_vec.reserve(readStats.insert_hist_binned.size());
+    uint64_t peak_count = 0;
+    uint32_t peak_bin = 0;
+    bool found = false;
 
-    uint64_t total_pairs = 0;
-    for (const auto& kv : readStats.insert_hist_binned) {
-        hist_vec.push_back(kv);
-        total_pairs += kv.second;
-    }
-
-    if (total_pairs == 0) {
-        readStats.mean_insert_bulk99 = 0.0;
-        readStats.quadratic_mean_bulk99 = 0.0;
-        return;
-    }
-
-    std::sort(hist_vec.begin(), hist_vec.end(),
-              [](const auto& a, const auto& b) {
-                  return a.first < b.first;
-              });
-
-    uint64_t bulk_pairs = 0;
-    long double weighted_sum = 0.0;
-    uint32_t cutoff_bin = 0;
-
-    for (const auto& kv : hist_vec) {
-        uint32_t bin_idx = kv.first;
-        uint64_t count   = kv.second;
-
-        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx)));
-        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx + 1))) - 1;
-
-        if (bin_start < 1) bin_start = 1;
-        if (bin_end < bin_start) bin_end = bin_start;
-
-        long double rep_value = std::sqrt((long double)bin_start * (long double)bin_end);
-
-        bulk_pairs += count;
-        weighted_sum += rep_value * static_cast<long double>(count);
-        cutoff_bin = bin_idx;
-
-        if (static_cast<long double>(bulk_pairs) / static_cast<long double>(total_pairs) > main_bulk) {
-            break;
+    for (uint32_t i = 0; i < hist.size(); ++i) {
+        if (hist[i] > peak_count) {
+            peak_count = hist[i];
+            peak_bin = i;
+            found = true;
         }
     }
 
-    if (bulk_pairs == 0) {
-        readStats.mean_insert_bulk99 = 0.0;
-        readStats.quadratic_mean_bulk99 = 0.0;
+    if (!found || peak_count == 0) {
+        readStats.mean_insert_bulk99 = 0.0L;
+        readStats.quadratic_mean_bulk99 = 0.0L;
         return;
     }
 
-    long double avg_isize = weighted_sum / static_cast<long double>(bulk_pairs);
+    long double threshold = rel_height * static_cast<long double>(peak_count);
 
-    long double variance = 0.0;
-
-    for (const auto& kv : hist_vec) {
-        uint32_t bin_idx = kv.first;
-        uint64_t count   = kv.second;
-
-        if (bin_idx > cutoff_bin) break;
-
-        uint64_t bin_start = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx)));
-        uint64_t bin_end   = static_cast<uint64_t>(std::floor(std::pow(graph.log_bin_factor, bin_idx + 1))) - 1;
-
-        if (bin_start < 1) bin_start = 1;
-        if (bin_end < bin_start) bin_end = bin_start;
-
-        long double rep_value = std::sqrt((long double)bin_start * (long double)bin_end);
-        long double diff = rep_value - avg_isize;
-
-        variance += static_cast<long double>(count) * diff * diff / static_cast<long double>(bulk_pairs);
+    uint32_t left = peak_bin;
+    while (left > 0 && static_cast<long double>(hist[left - 1]) >= threshold) {
+        --left;
     }
 
-    readStats.mean_insert_bulk99 = avg_isize;
-    readStats.quadratic_mean_bulk99 = variance + avg_isize * avg_isize;
+    uint32_t right = peak_bin;
+    while (right + 1 < hist.size() &&
+           static_cast<long double>(hist[right + 1]) >= threshold) {
+        ++right;
+    }
+
+    long double sum = 0.0L;
+    long double sumsq = 0.0L;
+    long double wsum = 0.0L;
+
+    for (uint32_t bin_idx = left; bin_idx <= right; ++bin_idx) {
+        uint64_t count = hist[bin_idx];
+        if (count == 0) continue;
+
+        long double bin_start = std::pow(
+            static_cast<long double>(graph.log_bin_factor),
+            static_cast<long double>(bin_idx)
+        );
+        long double bin_end = std::pow(
+            static_cast<long double>(graph.log_bin_factor),
+            static_cast<long double>(bin_idx + 1)
+        ) - 1.0L;
+
+        if (bin_start < 1.0L) bin_start = 1.0L;
+        if (bin_end < bin_start) bin_end = bin_start;
+
+        long double mu_bin = 0.5L * (bin_start + bin_end);
+        long double var_bin = 0.0L;
+
+        if (bin_end > bin_start) {
+            long double width = bin_end - bin_start;
+            var_bin = (width * width) / 12.0L;
+        }
+
+            sum += mu_bin * static_cast<long double>(count);
+            sumsq += (mu_bin * mu_bin + var_bin) * static_cast<long double>(count);
+            wsum += static_cast<long double>(count);
+    }
+
+    if (wsum == 0.0L) {
+        readStats.mean_insert_bulk99 = 0.0L;
+        readStats.quadratic_mean_bulk99 = 0.0L;
+        return;
+    }
+
+    readStats.mean_insert_bulk99 = sum / wsum;
+    readStats.quadratic_mean_bulk99 = sumsq / wsum;
 }
 
 uint32_t Runner::tlen_bin_index(uint64_t tlen) const
@@ -275,7 +274,7 @@ uint32_t Runner::tlen_bin_index(uint64_t tlen) const
     if (tlen < 1) return 0;
 
     return static_cast<uint32_t>(
-        std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
+        std::floor(std::log(static_cast<long double>(tlen)) * graph.inv_log_bin_factor)
     );
 }
 
@@ -866,8 +865,12 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 						//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
 						readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
 
+
                         uint64_t abs_isize = static_cast<uint64_t>(std::llabs(vectorbox[i]->core.isize));
                         uint32_t bin_idx = tlen_bin_index(abs_isize);
+                        if (bin_idx >= readStats.insert_hist_binned.size()) {
+                            readStats.insert_hist_binned.resize(bin_idx + 1, 0);
+                        }
                         ++readStats.insert_hist_binned[bin_idx];
 
 					}
@@ -1067,7 +1070,7 @@ void Runner::run() {
 			processReads(records_vector, bamHdr);
     	}
 
-//		estimate_insert_stats();
+		estimate_insert_stats_main_bulk(0.5);
 		if(userInput.hist_global){histo_global_distance(global_dist_count);}
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
