@@ -26,6 +26,7 @@ struct Graph {
 	std::unordered_map<uint64_t, uint64_t> fr_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rf_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rr_binned_dist_count; 
+	std::array<std::array<uint64_t, 4>, 9> strand_orient_by_sep{};
 
 	std::unordered_map<uint32_t, uint64_t> isize_hist;
 	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin per decade: pow(10.0, 1.0 / 10.0)
@@ -181,14 +182,19 @@ public:
 	void write_all_stats_file(const std::string&);
 	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
 	void write_pair_types_section(std::ofstream&);
+	void write_strand_orientation_by_distance_section(std::ofstream& myfile);
 	void update_log_binned_distance(uint64_t, std::unordered_map<uint64_t, uint64_t>&);
+	void update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2);
 	void update_pair_plots_from_records(const bam1_t*, const bam1_t*);
+	int genomic_sep_bin(uint64_t dist) const;
 	uint64_t cigar_mapped_bases(const bam1_t*);
 	double percentage(std::size_t, double);
 	long double update_mean_tlen(long double,uint64_t, bam1_t*);
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
 	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint32_t tlen_bin_index(uint64_t) const;
+
+	
 
 //	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);

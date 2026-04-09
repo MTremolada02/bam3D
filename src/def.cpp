@@ -62,6 +62,7 @@ void Runner::write_all_stats_file(const std::string& out_path)
 
 	if(userInput.pair_read_stats) { 
 		write_pair_types_section(myfile);
+        write_strand_orientation_by_distance_section(myfile);
 	}
 
     myfile.close();
@@ -159,7 +160,124 @@ void Runner::write_pair_types_section(std::ofstream& myfile)
            << percentage(qnameStats.NN, total_pairs) << "\n";
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Runner::write_strand_orientation_by_distance_section(std::ofstream& myfile)
+{
+    write_section_header(
+        myfile,
+        "STRAND_ORIENTATION_BY_DISTANCE",
+        "run\tdistance_bin\tFF\tFR\tRF\tRR\ttotal\tpFF\tpFR\tpRF\tpRR"
+    );
+
+    const char* labels[9] = {
+        "<100bp",
+        "100-500bp",
+        "0.5-1Kb",
+        "1-2Kb",
+        "2-5Kb",
+        "5-10Kb",
+        "10-15Kb",
+        "15-20Kb",
+        ">20Kb"
+    };
+
+    std::array<uint64_t, 4> combined{0, 0, 0, 0};
+
+    for (int b = 0; b < 9; ++b) {
+        uint64_t FF = graph.strand_orient_by_sep[b][0];
+        uint64_t FR = graph.strand_orient_by_sep[b][1];
+        uint64_t RF = graph.strand_orient_by_sep[b][2];
+        uint64_t RR = graph.strand_orient_by_sep[b][3];
+
+        uint64_t total = FF + FR + RF + RR;
+
+        combined[0] += FF;
+        combined[1] += FR;
+        combined[2] += RF;
+        combined[3] += RR;
+
+        double pFF = (total > 0) ? 100.0 * static_cast<double>(FF) / static_cast<double>(total) : 0.0;
+        double pFR = (total > 0) ? 100.0 * static_cast<double>(FR) / static_cast<double>(total) : 0.0;
+        double pRF = (total > 0) ? 100.0 * static_cast<double>(RF) / static_cast<double>(total) : 0.0;
+        double pRR = (total > 0) ? 100.0 * static_cast<double>(RR) / static_cast<double>(total) : 0.0;
+
+        myfile << "run1" << "\t"
+               << labels[b] << "\t"
+               << FF << "\t"
+               << FR << "\t"
+               << RF << "\t"
+               << RR << "\t"
+               << total << "\t"
+               << pFF << "\t"
+               << pFR << "\t"
+               << pRF << "\t"
+               << pRR << "\n";
+    }
+
+    uint64_t FF = combined[0];
+    uint64_t FR = combined[1];
+    uint64_t RF = combined[2];
+    uint64_t RR = combined[3];
+    uint64_t total = FF + FR + RF + RR;
+
+    double pFF = (total > 0) ? 100.0 * static_cast<double>(FF) / static_cast<double>(total) : 0.0;
+    double pFR = (total > 0) ? 100.0 * static_cast<double>(FR) / static_cast<double>(total) : 0.0;
+    double pRF = (total > 0) ? 100.0 * static_cast<double>(RF) / static_cast<double>(total) : 0.0;
+    double pRR = (total > 0) ? 100.0 * static_cast<double>(RR) / static_cast<double>(total) : 0.0;
+
+    myfile << "run1" << "\t"
+           << "combined" << "\t"
+           << FF << "\t"
+           << FR << "\t"
+           << RF << "\t"
+           << RR << "\t"
+           << total << "\t"
+           << pFF << "\t"
+           << pFR << "\t"
+           << pRF << "\t"
+           << pRR << "\n";
+}
+
+int Runner::genomic_sep_bin(uint64_t dist) const
+{
+    if (dist < 100ULL) return 0;          // <100bp
+    if (dist < 500ULL) return 1;          // 100-500bp
+    if (dist < 1000ULL) return 2;         // 0.5-1Kb
+    if (dist < 2000ULL) return 3;         // 1-2Kb
+    if (dist < 5000ULL) return 4;         // 2-5Kb
+    if (dist < 10000ULL) return 5;        // 5-10Kb
+    if (dist < 15000ULL) return 6;        // 10-15Kb
+    if (dist < 20000ULL) return 7;        // 15-20Kb
+    return 8;                             // >20Kb
+}
+
+void Runner::update_strand_orientation_by_distance(const bam1_t* rec1, const bam1_t* rec2)
+{
+    if (!rec1 || !rec2) return;
+    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
+    if (rec1->core.tid != rec2->core.tid) return;
+
+    const bam1_t* left = rec1;
+    const bam1_t* right = rec2;
+
+    if (left->core.pos > right->core.pos) {
+        std::swap(left, right);
+    }
+
+    uint64_t dist = static_cast<uint64_t>(right->core.pos - left->core.pos);
+    int bin = genomic_sep_bin(dist);
+    if (bin < 0 || bin >= 9) return;
+
+    bool left_rev  = (left->core.flag  & BAM_FREVERSE);
+    bool right_rev = (right->core.flag & BAM_FREVERSE);
+
+    int orient = 0;
+    if      (!left_rev && !right_rev) orient = 0; // FF
+    else if (!left_rev &&  right_rev) orient = 1; // FR
+    else if ( left_rev && !right_rev) orient = 2; // RF
+    else                              orient = 3; // RR
+
+    ++graph.strand_orient_by_sep[bin][orient];
+}
 
 void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* rec2) {
     if (!rec1 || !rec2) return;
@@ -185,7 +303,8 @@ void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* re
     else if ( left_rev &&  right_rev) update_log_binned_distance(dist, graph.rr_binned_dist_count);
 }
 
-void Runner::estimate_insert_stats_main_bulk(double rel_height)
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void Runner::estimate_insert_stats_main_bulk(double)
 {
     const auto& hist = readStats.insert_hist_binned;
 
@@ -195,36 +314,24 @@ void Runner::estimate_insert_stats_main_bulk(double rel_height)
         return;
     }
 
-    uint64_t peak_count = 0;
-    uint32_t peak_bin = 0;
-    bool found = false;
+    uint64_t best_count = 0;
+    uint32_t best_bin = 0;
 
     for (uint32_t i = 0; i < hist.size(); ++i) {
-        if (hist[i] > peak_count) {
-            peak_count = hist[i];
-            peak_bin = i;
-            found = true;
+        if (hist[i] > best_count) {
+            best_count = hist[i];
+            best_bin = i;
         }
     }
 
-    if (!found || peak_count == 0) {
+    if (best_count == 0) {
         readStats.mean_insert_bulk99 = 0.0L;
         readStats.quadratic_mean_bulk99 = 0.0L;
         return;
     }
 
-    long double threshold = rel_height * static_cast<long double>(peak_count);
-
-    uint32_t left = peak_bin;
-    while (left > 0 && static_cast<long double>(hist[left - 1]) >= threshold) {
-        --left;
-    }
-
-    uint32_t right = peak_bin;
-    while (right + 1 < hist.size() &&
-           static_cast<long double>(hist[right + 1]) >= threshold) {
-        ++right;
-    }
+    uint32_t left = (best_bin == 0) ? 0 : best_bin - 1;
+    uint32_t right = std::min<uint32_t>(best_bin + 1, static_cast<uint32_t>(hist.size() - 1));
 
     long double sum = 0.0L;
     long double sumsq = 0.0L;
@@ -246,17 +353,11 @@ void Runner::estimate_insert_stats_main_bulk(double rel_height)
         if (bin_start < 1.0L) bin_start = 1.0L;
         if (bin_end < bin_start) bin_end = bin_start;
 
-        long double mu_bin = 0.5L * (bin_start + bin_end);
-        long double var_bin = 0.0L;
+        long double rep = std::sqrt(bin_start * bin_end);
 
-        if (bin_end > bin_start) {
-            long double width = bin_end - bin_start;
-            var_bin = (width * width) / 12.0L;
-        }
-
-            sum += mu_bin * static_cast<long double>(count);
-            sumsq += (mu_bin * mu_bin + var_bin) * static_cast<long double>(count);
-            wsum += static_cast<long double>(count);
+        sum += rep * static_cast<long double>(count);
+        sumsq += rep * rep * static_cast<long double>(count);
+        wsum += static_cast<long double>(count);
     }
 
     if (wsum == 0.0L) {
@@ -274,7 +375,7 @@ uint32_t Runner::tlen_bin_index(uint64_t tlen) const
     if (tlen < 1) return 0;
 
     return static_cast<uint32_t>(
-        std::floor(std::log(static_cast<long double>(tlen)) * graph.inv_log_bin_factor)
+        std::log(static_cast<long double>(tlen)) * graph.inv_log_bin_factor
     );
 }
 
@@ -868,9 +969,11 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 
                         uint64_t abs_isize = static_cast<uint64_t>(std::llabs(vectorbox[i]->core.isize));
                         uint32_t bin_idx = tlen_bin_index(abs_isize);
+
                         if (bin_idx >= readStats.insert_hist_binned.size()) {
                             readStats.insert_hist_binned.resize(bin_idx + 1, 0);
                         }
+
                         ++readStats.insert_hist_binned[bin_idx];
 
 					}
