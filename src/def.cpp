@@ -917,12 +917,13 @@ void Runner::flag_inspector (bam1_t* bamdata) {
 	//sulle coppie, faccio tutte e due insieme così ho già filtrato dall calcolo le coppie supplementary e secondary
 	
 	if(flag & BAM_FPAIRED || flag & BAM_FPROPER_PAIR) {
-		++pairStats.pairN;
+		
         if(!(flag & BAM_FUNMAP)) ++readStats.primary_mapped;
 
 		 //WARNING! se c'è solo una read1 ma segnata come duplicato così non la conto nelle rad (basta toglier l'else if)
 		if (flag & BAM_FREAD1) { // così ne prendo solo una e non due non so se ha senso
 			++pairStats.read1;
+            ++pairStats.pairN;
 
 			//if ((flag & BAM_FUNMAP && !(flag & BAM_FMUNMAP))^(flag & BAM_FMUNMAP && !(flag & BAM_FUNMAP))) {++pairStats.UMone_sided;} // statistica fatta sul singolo se no è doppia
 			//else if (flag & BAM_FUNMAP && (flag & BAM_FMUNMAP)) {++pairStats.UNmapped;}
