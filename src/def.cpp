@@ -959,6 +959,8 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 				flag_inspector(vectorbox[i]);
  
 				if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
+
+                    ++readStats.cis;
 					if(std::abs((long double)vectorbox[i]->core.isize)>0 && ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE))){//così hanno sempre orientamenti opposti ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) &&
 
 						++readStats.av_counter;			
@@ -999,6 +1001,8 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
 						readStats.total_mapped_base += aligned;
 					} 
+				}else if (pairStats.good_read1 && vectorbox[i]->core.tid != vectorbox[i]->core.mtid) {
+                    ++readStats.trans;
 				}
 			}
 		}
@@ -1025,9 +1029,11 @@ void Runner::output(){
 		std::cout<<"MapQ0: "<<readStats.mapQ0<<std::endl;
 		std::cout<<"Qc_fail: "<<readStats.qc_fail<<std::endl; 
 		std::cout<<"Pairs: "<<pairStats.pairN<<std::endl;
+        std::cout<<"CIS: "<<readStats.cis<<std::endl;
+        std::cout<<"Trans: "<<readStats.trans<<std::endl;
 		std ::cout<<"insert_size_average: "<<readStats.mean_insert<<std::endl;
 		std::cout<<"SD: "<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
-        std::cout<<"insert_size_average_bulk99: "<<readStats.mean_insert_bulk99<<std::endl;
+        std::cout<<"insert_size_peak: "<<readStats.mean_insert_bulk99<<std::endl;
         std::cout<<"SD_bulk99: "<<std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99))<<std::endl;
 		std::cout<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
 		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;

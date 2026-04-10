@@ -43,6 +43,9 @@ struct ReadStats {
     uint64_t mapQ0 = 0;
 	uint64_t primary_mapped = 0;
 
+	uint64_t cis = 0;
+	uint64_t trans = 0;
+
     uint64_t mismatched_bases=0;
     uint64_t total_mapped_base=0;
 	std::size_t av_counter=0;
