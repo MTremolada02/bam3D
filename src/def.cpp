@@ -1163,7 +1163,7 @@ void Runner::run() {
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
-		std::size_t j=10000;//set real capacity
+		std::size_t j=200;//set real capacity
 		bool first=true;
  
 		Bam_record_vector records_vector(j); 
