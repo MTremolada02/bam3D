@@ -20,6 +20,144 @@
 #include "global.h"
 #include "def.hpp"
 
+void Runner::update_log_binned_tlen(
+    uint64_t tlen,
+    std::unordered_map<uint32_t, uint64_t>& specific_map
+)
+{
+    if (tlen == 0) return;
+
+    uint32_t bin_index = static_cast<uint32_t>(
+        std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
+    );
+
+    ++specific_map[bin_index];
+}
+
+void Runner::collect_binned_tlen_by_contig_class(
+    const bam1_t* rec1,
+    const bam1_t* rec2,
+    bam_hdr_t* bamHdr
+)
+{
+    if (!rec1 || !rec2 || !bamHdr) return;
+
+    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
+    if (rec1->core.tid != rec2->core.tid) return;
+
+    int64_t tlen = rec1->core.isize;
+    if (tlen <= 0) return;   // conta una sola volta per pair
+
+    uint64_t abs_tlen = static_cast<uint64_t>(tlen);
+    if (abs_tlen == 0) return;
+
+    uint32_t tid = rec1->core.tid;
+    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
+
+    std::string cls;
+    if (contig_len >= 10000ULL && contig_len < 100000ULL) {
+        cls = "10KB_100KB";
+    } else if (contig_len >= 100000ULL && contig_len < 1000000ULL) {
+        cls = "100KB_1MB";
+    } else if (contig_len >= 1000000ULL) {
+        cls = "GT1MB";
+    } else {
+        return; // sotto 10 kb non li consideri
+    }
+
+    update_log_binned_tlen(abs_tlen, tlen_binned_by_contig_class[cls]);
+}
+
+uint64_t Runner::estimate_q90_from_binned_hist(
+    const std::unordered_map<uint32_t, uint64_t>& hist
+) const
+{
+    if (hist.empty()) return 0;
+
+    std::vector<std::pair<uint32_t, uint64_t>> entries(hist.begin(), hist.end());
+    std::sort(entries.begin(), entries.end(),
+              [](const auto& a, const auto& b) {
+                  return a.first < b.first;
+              });
+
+    uint64_t total = 0;
+    for (const auto& kv : entries) total += kv.second;
+    if (total == 0) return 0;
+
+    uint64_t threshold = static_cast<uint64_t>(std::ceil(0.90 * static_cast<long double>(total)));
+    uint64_t cumulative = 0;
+
+    for (const auto& kv : entries) {
+        cumulative += kv.second;
+        if (cumulative >= threshold) {
+            uint32_t bin_index = kv.first;
+
+            uint64_t bin_start = static_cast<uint64_t>(
+                std::floor(std::pow(graph.log_bin_factor, bin_index))
+            );
+            uint64_t bin_end = static_cast<uint64_t>(
+                std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
+            ) - 1;
+
+            if (bin_start < 1) bin_start = 1;
+            if (bin_end < bin_start) bin_end = bin_start;
+
+            return static_cast<uint64_t>(std::sqrt((long double)bin_start * (long double)bin_end));
+        }
+    }
+
+    return 0;
+}
+
+void Runner::write_tlen_binned_by_contig_class_section(std::ofstream& myfile)
+{
+    const std::vector<std::string> classes = {
+        "10KB_100KB",
+        "100KB_1MB",
+        "GT1MB"
+    };
+
+    for (const auto& cls : classes) {
+        write_section_header(
+            myfile,
+            "TLEN_BINNED_" + cls,
+            "bin_start\tbin_end\tcount\tq90"
+        );
+
+        auto it = tlen_binned_by_contig_class.find(cls);
+        if (it == tlen_binned_by_contig_class.end()) continue;
+
+        const auto& hist = it->second;
+        uint64_t q90 = estimate_q90_from_binned_hist(hist);
+
+        std::vector<std::pair<uint32_t, uint64_t>> entries(hist.begin(), hist.end());
+        std::sort(entries.begin(), entries.end(),
+                  [](const auto& a, const auto& b) {
+                      return a.first < b.first;
+                  });
+
+        for (const auto& kv : entries) {
+            uint32_t bin_index = kv.first;
+            uint64_t count = kv.second;
+
+            uint64_t bin_start = static_cast<uint64_t>(
+                std::floor(std::pow(graph.log_bin_factor, bin_index))
+            );
+            uint64_t bin_end = static_cast<uint64_t>(
+                std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
+            ) - 1;
+
+            if (bin_start < 1) bin_start = 1;
+            if (bin_end < bin_start) bin_end = bin_start;
+
+            myfile << bin_start << "\t"
+                   << bin_end << "\t"
+                   << count << "\t"
+                   << q90 << "\n";
+        }
+    }
+}
+
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
@@ -64,6 +202,10 @@ void Runner::write_all_stats_file(const std::string& out_path)
 		write_pair_types_section(myfile);
         write_strand_orientation_by_distance_section(myfile);
 	}
+
+    if (!tlen_binned_by_contig_class.empty()) {
+    write_tlen_binned_by_contig_class_section(myfile);
+    }
 
     myfile.close();
 }
@@ -798,6 +940,8 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
+
+            collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);
         }
         // -------------------------
         // 6) classificazione finale
@@ -1002,9 +1146,7 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
 						readStats.total_mapped_base += aligned;
 					} 
-				}else if (pairStats.good_read1 && vectorbox[i]->core.tid != vectorbox[i]->core.mtid) {
-                    ++readStats.trans;
-				}
+				}else if (pairStats.good_read1 && vectorbox[i]->core.tid != vectorbox[i]->core.mtid) {++readStats.trans;}
 			}
 		}
 

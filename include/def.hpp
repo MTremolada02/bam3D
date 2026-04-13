@@ -178,6 +178,7 @@ private:
 
     std::unordered_map<uint64_t,uint64_t> global_dist_count;
     std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>> chrom_dist_count;
+	std::unordered_map<std::string, std::unordered_map<uint32_t, uint64_t>> tlen_binned_by_contig_class;
     
 public:
     void loadInput(UserInputBam3D userInput);
@@ -197,7 +198,10 @@ public:
 	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint32_t tlen_bin_index(uint64_t) const;
 
-	
+		void update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map);
+		void collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr);
+		uint64_t estimate_q90_from_binned_hist(const std::unordered_map<uint32_t, uint64_t>& hist) const;
+		void write_tlen_binned_by_contig_class_section(std::ofstream& myfile);
 
 //	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);
