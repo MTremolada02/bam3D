@@ -107,6 +107,11 @@ struct QnameStats {
 	uint64_t NR=0;
 	uint64_t NN=0;
 
+	std::array<uint64_t, 9> dist_FF = {0};
+    std::array<uint64_t, 9> dist_FR = {0};
+    std::array<uint64_t, 9> dist_RF = {0};
+    std::array<uint64_t, 9> dist_RR = {0};
+
 uint64_t dbg_unresolved = 0;
 uint64_t dbg_not_2plus1 = 0;
 uint64_t dbg_outer_bad = 0;
@@ -184,6 +189,7 @@ public:
     void loadInput(UserInputBam3D userInput);
 	void write_section_header(std::ofstream&, const std::string&,const std::string&);
 	void write_all_stats_file(const std::string&);
+	void write_output_file(const std::string&);
 	void write_binned_map(std::ofstream&, const std::string&, const std::unordered_map<uint64_t, uint64_t>&);
 	void write_pair_types_section(std::ofstream&);
 	void write_strand_orientation_by_distance_section(std::ofstream& myfile);
@@ -197,12 +203,12 @@ public:
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
 	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint32_t tlen_bin_index(uint64_t) const;
-
-		void update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map);
-		void collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr);
-		uint64_t estimate_q90_from_binned_hist(const std::unordered_map<uint32_t, uint64_t>& hist) const;
-		void write_tlen_binned_by_contig_class_section(std::ofstream& myfile);
-
+/*
+	void update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map);
+	void collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr);
+	uint64_t estimate_q90_from_binned_hist(const std::unordered_map<uint32_t, uint64_t>& hist) const;
+	void write_tlen_binned_by_contig_class_section(std::ofstream& myfile);
+*/
 //	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);
 	uint16_t Alignstarts(const bam1_t*);

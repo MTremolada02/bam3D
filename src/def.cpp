@@ -20,11 +20,7 @@
 #include "global.h"
 #include "def.hpp"
 
-void Runner::update_log_binned_tlen(
-    uint64_t tlen,
-    std::unordered_map<uint32_t, uint64_t>& specific_map
-)
-{
+/*void Runner::update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map) {
     if (tlen == 0) return;
 
     uint32_t bin_index = static_cast<uint32_t>(
@@ -34,11 +30,7 @@ void Runner::update_log_binned_tlen(
     ++specific_map[bin_index];
 }
 
-void Runner::collect_binned_tlen_by_contig_class(
-    const bam1_t* rec1,
-    const bam1_t* rec2,
-    bam_hdr_t* bamHdr
-)
+void Runner::collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr)
 {
     if (!rec1 || !rec2 || !bamHdr) return;
 
@@ -157,7 +149,7 @@ void Runner::write_tlen_binned_by_contig_class_section(std::ofstream& myfile)
         }
     }
 }
-
+*/
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
@@ -203,13 +195,105 @@ void Runner::write_all_stats_file(const std::string& out_path)
         write_strand_orientation_by_distance_section(myfile);
 	}
 
-    if (!tlen_binned_by_contig_class.empty()) {
-    write_tlen_binned_by_contig_class_section(myfile);
-    }
+   // if (!tlen_binned_by_contig_class.empty()) {
+    //write_tlen_binned_by_contig_class_section(myfile);
+    //}
 
     myfile.close();
 }
 
+void Runner::write_output_file(const std::string& out_path)
+{
+    std::ofstream myfile(out_path, std::ios::out);
+
+    if (!myfile.is_open()) {
+        std::cout << "cannot open " << out_path << std::endl;
+        return;
+    }
+
+    myfile << "SINGLE READ STATISTICS:" << std::endl;
+	myfile<< "Tot_raw_record: " << readStats.readN << std::endl;
+	myfile << "Non_primary: " << readStats.secondary + readStats.supplementary << std::endl;
+	myfile << "Primary_read: " << readStats.readN - (readStats.secondary + readStats.supplementary) << std::endl;
+	myfile << "Supplementary: " << readStats.supplementary << std::endl;
+	myfile << "Read1: " << pairStats.read1 << std::endl;
+	myfile<<"Read2: "<<pairStats.read2<<std::endl;
+	myfile<<"Reads_mapped: "<<readStats.readN-readStats.unmapped<<std::endl;
+    myfile<<"Primary_mapped: "<<readStats.primary_mapped<<std::endl;
+	myfile<<"Unmapped: "<<readStats.unmapped<<std::endl;        
+	myfile<<"Proper_pairs: "<<pairStats.proper_pairs<<std::endl;;
+	myfile<<"Record_duplicated: "<<pairStats.duplicated<<std::endl;
+	myfile<<"MapQ0: "<<readStats.mapQ0<<std::endl;
+	myfile<<"Qc_fail: "<<readStats.qc_fail<<std::endl; 
+	myfile<<"Pairs: "<<pairStats.pairN<<std::endl;
+    myfile<<"CIS: "<<readStats.cis<<std::endl;
+    myfile<<"Trans: "<<readStats.trans<<std::endl;
+	myfile<<"insert_size_average: "<<readStats.mean_insert<<std::endl;
+	myfile<<"SD: "<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
+    myfile<<"insert_size_peak: "<<readStats.mean_insert_bulk99<<std::endl;
+    myfile<<"SD_bulk99: "<<std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99))<<std::endl;
+	myfile<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
+	myfile<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+	myfile<<"PAIR READS STATISTICS:"<<std::endl;
+	myfile<<"Pairs_two_sided_mapped: "<<pairStats.two_side_mapped<<std::endl;
+	myfile<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
+    myfile<<"Pairs_one_sided_mapped: "<<pairStats.one_side<<std::endl;
+	myfile<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
+    myfile<<"Pairs_unmapped: "<<pairStats.UNmapped<<std::endl;
+	myfile<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
+    myfile<<"CIS: "<<pairStats.cis<<std::endl;
+	myfile<<"Primary_dupl "<<pairStats.dupl<<std::endl;
+	myfile<<"unique_primary: "<<pairStats.two_side_mapped-pairStats.dupl<<std::endl;//mapped primary after deduplication
+	myfile<<std::endl;
+	myfile<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
+	myfile<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
+	myfile<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
+	myfile<<"%CIS: "<<((pairStats.cis*100)/(long double)pairStats.two_side_mapped)<<std::endl;
+	myfile<<"%primary_dupl: "<<((pairStats.dupl*100)/(long double)pairStats.two_side_mapped)<<std::endl;
+	myfile<<std::endl;
+	myfile<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
+	myfile<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
+
+    const char* dist_labels[9] = {
+        "<100bp", "100-500bp", "0.5-1Kb", "1-2Kb", "2-5Kb", "5-10Kb", "10-15Kb", "15-20Kb", ">20Kb"
+    };
+
+    myfile << "\nORIENTATIONS BY DISTANCE CLASS (FF : FR : RF : RR):" << std::endl;
+    for (int b = 0; b < 9; ++b) {
+        myfile << dist_labels[b] << "\t" 
+               << qnameStats.dist_FF[b] << ":" 
+               << qnameStats.dist_FR[b] << ":" 
+               << qnameStats.dist_RF[b] << ":" 
+               << qnameStats.dist_RR[b] << std::endl;
+    }
+
+	std::size_t  tot_qname_stats= qnameStats.UU+qnameStats.MM+qnameStats.NN+qnameStats.MU+qnameStats.NU+qnameStats.NM+qnameStats.DD+qnameStats.WW+qnameStats.UR+qnameStats.RU+qnameStats.NR+qnameStats.MR;
+	myfile<<"%two_sided_mapped"<< (qnameStats.UU+qnameStats.UR+qnameStats.RU)/(long double)tot_qname_stats<<std::endl;
+	myfile<<"two_sided_mapped"<< qnameStats.UU+qnameStats.UR+qnameStats.RU<<std::endl;
+	myfile<<"total read"<<tot_qname_stats<<std::endl;
+
+    myfile<<"Classificated as WW:"<<std::endl;
+	myfile << "unresolved: " << qnameStats.dbg_unresolved << "\n";
+	myfile << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
+	myfile << "not 3"<<  qnameStats.dbg_not3 << std::endl;
+	myfile << "no mapped chim side"<<  qnameStats.dbg_unmapped << std::endl;
+	myfile << "outer_bad->WW: " << qnameStats.dbg_outer_bad << "\n";
+	myfile << "outer noindex (not possible)"<<  qnameStats.dbg_outer_noindex << std::endl;
+	myfile << "outer bad other M"<<  qnameStats.dbg_outer_bad_otherM << std::endl;
+	myfile << "outer bad other U"<<  qnameStats.dbg_outer_bad_otherU << std::endl;
+	myfile << "outer bad other N"<<  qnameStats.dbg_outer_bad_otherN << std::endl;
+	myfile << "other==NO_INDEX: " << qnameStats.dbg_other_no_index << "\n";
+	myfile << "other_type==N: " << qnameStats.dbg_other_type_N << "\n";
+	myfile << "other_type==M: " << qnameStats.dbg_other_type_M << "\n";
+	myfile << "ignore_inner->R: " << qnameStats.dbg_ignore_inner << "\n";
+	myfile << "ignore inner per gap<20"<<  qnameStats.dbg_gap_large << std::endl;
+	myfile << "geom pass->R: " << qnameStats.dbg_geom_pass << "\n";
+	myfile << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
+	myfile << "fall back: " << qnameStats.fallback << "\n";
+
+
+    myfile.close();
+}
 
 //GRAPHS
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -419,6 +503,11 @@ void Runner::update_strand_orientation_by_distance(const bam1_t* rec1, const bam
     else                              orient = 3; // RR
 
     ++graph.strand_orient_by_sep[bin][orient];
+
+    if (orient == 0)      ++qnameStats.dist_FF[bin];
+    else if (orient == 1) ++qnameStats.dist_FR[bin];
+    else if (orient == 2) ++qnameStats.dist_RF[bin];
+    else                  ++qnameStats.dist_RR[bin];
 }
 
 void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* rec2) {
@@ -940,8 +1029,8 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
-
-            collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);
+            update_strand_orientation_by_distance(group[plot_r1], group[plot_r2]);
+            //collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);
         }
         // -------------------------
         // 6) classificazione finale
@@ -1183,11 +1272,11 @@ void Runner::output(){
 		std::cout<<"PAIR READS STATISTICS:"<<std::endl;
 		std::cout<<"Pairs_two_sided_mapped: "<<pairStats.two_side_mapped<<std::endl;
 		std::cout<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
-                std::cout<<"Pairs_one_sided_mapped: "<<pairStats.one_side<<std::endl;
+        std::cout<<"Pairs_one_sided_mapped: "<<pairStats.one_side<<std::endl;
 		std::cout<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
-                std::cout<<"Pairs_unmapped: "<<pairStats.UNmapped<<std::endl;
+        std::cout<<"Pairs_unmapped: "<<pairStats.UNmapped<<std::endl;
 		std::cout<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
-                std::cout<<"CIS: "<<pairStats.cis<<std::endl;
+        std::cout<<"CIS: "<<pairStats.cis<<std::endl;
 		std::cout<<"Primary_dupl "<<pairStats.dupl<<std::endl;
 		std::cout<<"unique_primary: "<<pairStats.two_side_mapped-pairStats.dupl<<std::endl;//mapped primary after deduplication
 		std::cout<<std::endl;
@@ -1200,12 +1289,25 @@ void Runner::output(){
 		std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 		std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
 
+        const char* dist_labels[9] = {
+        "<100bp", "100-500bp", "0.5-1Kb", "1-2Kb", "2-5Kb", "5-10Kb", "10-15Kb", "15-20Kb", ">20Kb"
+        };
+        std::cout << "\nORIENTATIONS BY DISTANCE CLASS (FF : FR : RF : RR):" << std::endl;
+
+        for (int b = 0; b < 9; ++b) {
+            std::cout << dist_labels[b] << "\t" 
+                  << qnameStats.dist_FF[b] << ":" 
+                  << qnameStats.dist_FR[b] << ":" 
+                  << qnameStats.dist_RF[b] << ":" 
+                  << qnameStats.dist_RR[b] << std::endl;
+        }
+
 		std::size_t  tot_qname_stats= qnameStats.UU+qnameStats.MM+qnameStats.NN+qnameStats.MU+qnameStats.NU+qnameStats.NM+qnameStats.DD+qnameStats.WW+qnameStats.UR+qnameStats.RU+qnameStats.NR+qnameStats.MR;
 		std::cout<<"%two_sided_mapped"<< (qnameStats.UU+qnameStats.UR+qnameStats.RU)/(long double)tot_qname_stats<<std::endl;
 		std::cout<<"two_sided_mapped"<< qnameStats.UU+qnameStats.UR+qnameStats.RU<<std::endl;
 		std::cout<<"total read"<<tot_qname_stats<<std::endl;
-		//std::cout<<"funzione di overlapping"<<pairStats.counter1<<std::endl;
 
+        std::cout<<"Classificated as WW:"<<std::endl;
 		std::cout << "unresolved: " << qnameStats.dbg_unresolved << "\n";
 		std::cout << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
 		std::cout << "not 3"<<  qnameStats.dbg_not3 << std::endl;
@@ -1327,7 +1429,8 @@ void Runner::run() {
 		if(userInput.hist_by_chrom){histo_chrom_distance(chrom_dist_count);}
 
     		
-		write_all_stats_file("all_stats.tsv");//!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		write_all_stats_file("all_stats.tsv");
+        write_output_file("output_stats.tsv");
 		output();
 		
 		bam_hdr_destroy(bamHdr);
