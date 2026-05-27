@@ -16,20 +16,19 @@ struct UserInputBam3D : UserInput { // additional input
 	bool pair_read_stats = false;
 
 	uint8_t decompression_threads = 4;
-	//uint8_t histogram_mode = hist_none;
 
 };
 
 struct Graph {
 	std::unordered_map<uint64_t, uint64_t> Ps_binned_dist_count;
-	std::unordered_map<uint64_t, uint64_t> ff_binned_dist_count; //forse un po' grande uint_64 
+	std::unordered_map<uint64_t, uint64_t> ff_binned_dist_count; 
 	std::unordered_map<uint64_t, uint64_t> fr_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rf_binned_dist_count;
 	std::unordered_map<uint64_t, uint64_t> rr_binned_dist_count; 
 	std::array<std::array<uint64_t, 4>, 9> strand_orient_by_sep{};
 
 	std::unordered_map<uint32_t, uint64_t> isize_hist;
-	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin per decade: pow(10.0, 1.0 / 10.0)
+	double log_bin_factor = std::pow(10.0, 1.0 / 10.0); // 10 bin for decade: pow(10.0, 1.0 / 10.0)
 	double inv_log_bin_factor = 1.0 / std::log(log_bin_factor);
 };
 
@@ -47,20 +46,16 @@ struct ReadStats {
 	uint64_t trans = 0;
 
     uint64_t mismatched_bases=0;
-    uint64_t total_mapped_base=0;
+    uint64_t total_read_bases=0;
 	std::size_t av_counter=0;
 	std::size_t avf_counter=0;
-//	std::map<uint32_t, uint64_t> insert_hist; //bin , counter
-//	const uint32_t bin_size = 100;   // 100 bp per bin
-//	uint64_t sd_insert=0;
-//	uint64_t mean_insert=0;
 
 	long double mean_insert=0;
 	long double quadratic_mean=0;
 	long double mean_insert_filtr=0;
 	long double quadratic_mean_filtr=0;
-	long double mean_insert_bulk99 = 0;
-	long double quadratic_mean_bulk99 = 0;	
+	long double mean_insert_peak = 0;
+	long double quadratic_mean_peak = 0;	
 	std::vector<uint64_t> insert_hist_binned;
 
 	double error_rate=0;
@@ -73,8 +68,8 @@ struct PairStats {
     uint64_t pairN        = 0;
     uint64_t proper_pairs = 0;
     uint64_t good_pairs   = 0;
-	bool good_read1=false; //dovrebbe essere locale
-	bool good_read2=false; //dovrebbe essere locale
+	bool good_read1=false; 
+	bool good_read2=false; 
 
     uint64_t one_side  = 0;
     uint64_t two_side_mapped  = 0;
@@ -112,23 +107,6 @@ struct QnameStats {
     std::array<uint64_t, 9> dist_RF = {0};
     std::array<uint64_t, 9> dist_RR = {0};
 
-uint64_t dbg_unresolved = 0;
-uint64_t dbg_not_2plus1 = 0;
-uint64_t dbg_outer_bad = 0;
-uint64_t dbg_other_no_index = 0;
-uint64_t dbg_other_type_N = 0;
-uint64_t dbg_other_type_M = 0;
-uint64_t dbg_ignore_inner = 0;
-uint64_t dbg_geom_pass = 0;
-uint64_t dbg_geom_fail = 0;
-uint64_t dbg_gap_large = 0;
-uint64_t dbg_outer_bad_otherN = 0;
-uint64_t dbg_outer_bad_otherM = 0;
-uint64_t dbg_outer_bad_otherU = 0;
-uint64_t fallback = 0;
-uint64_t dbg_not3 =0;
-uint64_t dbg_unmapped =0;
-uint64_t dbg_outer_noindex = 0;
 };
 
 class Bam_record_vector {
@@ -203,13 +181,6 @@ public:
 	long double update_quadratic_mean_tlen(long double,uint64_t, bam1_t*);
 	void estimate_insert_stats_main_bulk(double main_bulk);
 	uint32_t tlen_bin_index(uint64_t) const;
-/*
-	void update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map);
-	void collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr);
-	uint64_t estimate_q90_from_binned_hist(const std::unordered_map<uint32_t, uint64_t>& hist) const;
-	void write_tlen_binned_by_contig_class_section(std::ofstream& myfile);
-*/
-//	void estimate_insert_stats();
 	double error_rate(uint64_t,uint64_t);
 	uint16_t Alignstarts(const bam1_t*);
 	void qname_stats(Bam_record_vector &,bam_hdr_t*);

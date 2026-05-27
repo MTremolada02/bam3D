@@ -20,136 +20,6 @@
 #include "global.h"
 #include "def.hpp"
 
-/*void Runner::update_log_binned_tlen(uint64_t tlen, std::unordered_map<uint32_t, uint64_t>& specific_map) {
-    if (tlen == 0) return;
-
-    uint32_t bin_index = static_cast<uint32_t>(
-        std::floor(std::log((double)tlen) * graph.inv_log_bin_factor)
-    );
-
-    ++specific_map[bin_index];
-}
-
-void Runner::collect_binned_tlen_by_contig_class(const bam1_t* rec1, const bam1_t* rec2, bam_hdr_t* bamHdr)
-{
-    if (!rec1 || !rec2 || !bamHdr) return;
-
-    if (rec1->core.tid < 0 || rec2->core.tid < 0) return;
-    if (rec1->core.tid != rec2->core.tid) return;
-
-    int64_t tlen = rec1->core.isize;
-    if (tlen <= 0) return;   // conta una sola volta per pair
-
-    uint64_t abs_tlen = static_cast<uint64_t>(tlen);
-    if (abs_tlen == 0) return;
-
-    uint32_t tid = rec1->core.tid;
-    uint64_t contig_len = static_cast<uint64_t>(bamHdr->target_len[tid]);
-
-    std::string cls;
-    if (contig_len >= 10000ULL && contig_len < 100000ULL) {
-        cls = "10KB_100KB";
-    } else if (contig_len >= 100000ULL && contig_len < 1000000ULL) {
-        cls = "100KB_1MB";
-    } else if (contig_len >= 1000000ULL) {
-        cls = "GT1MB";
-    } else {
-        return; // sotto 10 kb non li consideri
-    }
-
-    update_log_binned_tlen(abs_tlen, tlen_binned_by_contig_class[cls]);
-}
-
-uint64_t Runner::estimate_q90_from_binned_hist(
-    const std::unordered_map<uint32_t, uint64_t>& hist
-) const
-{
-    if (hist.empty()) return 0;
-
-    std::vector<std::pair<uint32_t, uint64_t>> entries(hist.begin(), hist.end());
-    std::sort(entries.begin(), entries.end(),
-              [](const auto& a, const auto& b) {
-                  return a.first < b.first;
-              });
-
-    uint64_t total = 0;
-    for (const auto& kv : entries) total += kv.second;
-    if (total == 0) return 0;
-
-    uint64_t threshold = static_cast<uint64_t>(std::ceil(0.90 * static_cast<long double>(total)));
-    uint64_t cumulative = 0;
-
-    for (const auto& kv : entries) {
-        cumulative += kv.second;
-        if (cumulative >= threshold) {
-            uint32_t bin_index = kv.first;
-
-            uint64_t bin_start = static_cast<uint64_t>(
-                std::floor(std::pow(graph.log_bin_factor, bin_index))
-            );
-            uint64_t bin_end = static_cast<uint64_t>(
-                std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
-            ) - 1;
-
-            if (bin_start < 1) bin_start = 1;
-            if (bin_end < bin_start) bin_end = bin_start;
-
-            return static_cast<uint64_t>(std::sqrt((long double)bin_start * (long double)bin_end));
-        }
-    }
-
-    return 0;
-}
-
-void Runner::write_tlen_binned_by_contig_class_section(std::ofstream& myfile)
-{
-    const std::vector<std::string> classes = {
-        "10KB_100KB",
-        "100KB_1MB",
-        "GT1MB"
-    };
-
-    for (const auto& cls : classes) {
-        write_section_header(
-            myfile,
-            "TLEN_BINNED_" + cls,
-            "bin_start\tbin_end\tcount\tq90"
-        );
-
-        auto it = tlen_binned_by_contig_class.find(cls);
-        if (it == tlen_binned_by_contig_class.end()) continue;
-
-        const auto& hist = it->second;
-        uint64_t q90 = estimate_q90_from_binned_hist(hist);
-
-        std::vector<std::pair<uint32_t, uint64_t>> entries(hist.begin(), hist.end());
-        std::sort(entries.begin(), entries.end(),
-                  [](const auto& a, const auto& b) {
-                      return a.first < b.first;
-                  });
-
-        for (const auto& kv : entries) {
-            uint32_t bin_index = kv.first;
-            uint64_t count = kv.second;
-
-            uint64_t bin_start = static_cast<uint64_t>(
-                std::floor(std::pow(graph.log_bin_factor, bin_index))
-            );
-            uint64_t bin_end = static_cast<uint64_t>(
-                std::floor(std::pow(graph.log_bin_factor, bin_index + 1))
-            ) - 1;
-
-            if (bin_start < 1) bin_start = 1;
-            if (bin_end < bin_start) bin_end = bin_start;
-
-            myfile << bin_start << "\t"
-                   << bin_end << "\t"
-                   << count << "\t"
-                   << q90 << "\n";
-        }
-    }
-}
-*/
 void Runner::loadInput(UserInputBam3D userInput) {
     this->userInput = userInput;
 }
@@ -194,16 +64,10 @@ void Runner::write_all_stats_file(const std::string& out_path)
 		write_pair_types_section(myfile);
         write_strand_orientation_by_distance_section(myfile);
 	}
-
-   // if (!tlen_binned_by_contig_class.empty()) {
-    //write_tlen_binned_by_contig_class_section(myfile);
-    //}
-
     myfile.close();
 }
 
-void Runner::write_output_file(const std::string& out_path)
-{
+void Runner::write_output_file(const std::string& out_path){
     std::ofstream myfile(out_path, std::ios::out);
 
     if (!myfile.is_open()) {
@@ -230,26 +94,18 @@ void Runner::write_output_file(const std::string& out_path)
     myfile<<"Trans: "<<readStats.trans<<std::endl;
 	myfile<<"insert_size_average: "<<readStats.mean_insert<<std::endl;
 	myfile<<"SD: "<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
-    myfile<<"insert_size_peak: "<<readStats.mean_insert_bulk99<<std::endl;
-    myfile<<"SD_bulk99: "<<std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99))<<std::endl;
-	myfile<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
+    myfile<<"insert_size_peak: "<<readStats.mean_insert_peak<<std::endl;
+    myfile<<"SD_peak: "<<std::sqrt(readStats.quadratic_mean_peak - (readStats.mean_insert_peak * readStats.mean_insert_peak))<<std::endl;
+	myfile<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_read_bases)<<std::endl;
 	myfile<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+    myfile<<std::endl;
 	myfile<<"PAIR READS STATISTICS:"<<std::endl;
 	myfile<<"Pairs_two_sided_mapped: "<<pairStats.two_side_mapped<<std::endl;
-	myfile<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
     myfile<<"Pairs_one_sided_mapped: "<<pairStats.one_side<<std::endl;
-	myfile<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
     myfile<<"Pairs_unmapped: "<<pairStats.UNmapped<<std::endl;
-	myfile<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
     myfile<<"CIS: "<<pairStats.cis<<std::endl;
 	myfile<<"Primary_dupl "<<pairStats.dupl<<std::endl;
 	myfile<<"unique_primary: "<<pairStats.two_side_mapped-pairStats.dupl<<std::endl;//mapped primary after deduplication
-	myfile<<std::endl;
-	myfile<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
-	myfile<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
-	myfile<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
-	myfile<<"%CIS: "<<((pairStats.cis*100)/(long double)pairStats.two_side_mapped)<<std::endl;
-	myfile<<"%primary_dupl: "<<((pairStats.dupl*100)/(long double)pairStats.two_side_mapped)<<std::endl;
 	myfile<<std::endl;
 	myfile<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 	myfile<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
@@ -271,25 +127,6 @@ void Runner::write_output_file(const std::string& out_path)
 	myfile<<"%two_sided_mapped"<< (qnameStats.UU+qnameStats.UR+qnameStats.RU)/(long double)tot_qname_stats<<std::endl;
 	myfile<<"two_sided_mapped"<< qnameStats.UU+qnameStats.UR+qnameStats.RU<<std::endl;
 	myfile<<"total read"<<tot_qname_stats<<std::endl;
-
-    myfile<<"Classificated as WW:"<<std::endl;
-	myfile << "unresolved: " << qnameStats.dbg_unresolved << "\n";
-	myfile << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
-	myfile << "not 3"<<  qnameStats.dbg_not3 << std::endl;
-	myfile << "no mapped chim side"<<  qnameStats.dbg_unmapped << std::endl;
-	myfile << "outer_bad->WW: " << qnameStats.dbg_outer_bad << "\n";
-	myfile << "outer noindex (not possible)"<<  qnameStats.dbg_outer_noindex << std::endl;
-	myfile << "outer bad other M"<<  qnameStats.dbg_outer_bad_otherM << std::endl;
-	myfile << "outer bad other U"<<  qnameStats.dbg_outer_bad_otherU << std::endl;
-	myfile << "outer bad other N"<<  qnameStats.dbg_outer_bad_otherN << std::endl;
-	myfile << "other==NO_INDEX: " << qnameStats.dbg_other_no_index << "\n";
-	myfile << "other_type==N: " << qnameStats.dbg_other_type_N << "\n";
-	myfile << "other_type==M: " << qnameStats.dbg_other_type_M << "\n";
-	myfile << "ignore_inner->R: " << qnameStats.dbg_ignore_inner << "\n";
-	myfile << "ignore inner per gap<20"<<  qnameStats.dbg_gap_large << std::endl;
-	myfile << "geom pass->R: " << qnameStats.dbg_geom_pass << "\n";
-	myfile << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
-	myfile << "fall back: " << qnameStats.fallback << "\n";
 
 
     myfile.close();
@@ -512,7 +349,7 @@ void Runner::update_strand_orientation_by_distance(const bam1_t* rec1, const bam
 
 void Runner::update_pair_plots_from_records(const bam1_t* rec1, const bam1_t* rec2) {
     if (!rec1 || !rec2) return;
-    if (rec1->core.tid != rec2->core.tid) return; // solo stesso riferimento
+    if (rec1->core.tid != rec2->core.tid) return;
 
     const bam1_t* left = rec1;
     const bam1_t* right = rec2;
@@ -540,8 +377,8 @@ void Runner::estimate_insert_stats_main_bulk(double)
     const auto& hist = readStats.insert_hist_binned;
 
     if (hist.empty()) {
-        readStats.mean_insert_bulk99 = 0.0L;
-        readStats.quadratic_mean_bulk99 = 0.0L;
+        readStats.mean_insert_peak = 0.0L;
+        readStats.quadratic_mean_peak = 0.0L;
         return;
     }
 
@@ -556,8 +393,8 @@ void Runner::estimate_insert_stats_main_bulk(double)
     }
 
     if (best_count == 0) {
-        readStats.mean_insert_bulk99 = 0.0L;
-        readStats.quadratic_mean_bulk99 = 0.0L;
+        readStats.mean_insert_peak = 0.0L;
+        readStats.quadratic_mean_peak = 0.0L;
         return;
     }
 
@@ -592,13 +429,13 @@ void Runner::estimate_insert_stats_main_bulk(double)
     }
 
     if (wsum == 0.0L) {
-        readStats.mean_insert_bulk99 = 0.0L;
-        readStats.quadratic_mean_bulk99 = 0.0L;
+        readStats.mean_insert_peak = 0.0L;
+        readStats.quadratic_mean_peak = 0.0L;
         return;
     }
 
-    readStats.mean_insert_bulk99 = sum / wsum;
-    readStats.quadratic_mean_bulk99 = sumsq / wsum;
+    readStats.mean_insert_peak = sum / wsum;
+    readStats.quadratic_mean_peak = sumsq / wsum;
 }
 
 uint32_t Runner::tlen_bin_index(uint64_t tlen) const
@@ -610,17 +447,17 @@ uint32_t Runner::tlen_bin_index(uint64_t tlen) const
     );
 }
 
-//se le read partono uguali ma finiscono diverse lo considero un walk in ogni caso, anche pairtools dovrebbe fare così, se è un miglioramento si può pensare ad un'implementazione
-uint16_t Runner::Alignstarts(const bam1_t* b){//legge il cigar e riporta le basi segnate nel read a sinistra prima delle basi mappate
+
+uint16_t Runner::Alignstarts(const bam1_t* b){
 	const uint32_t* cigar = bam_get_cigar(b);
 	std::size_t bases=0;
 
 	for (uint32_t i = 0; i < b->core.n_cigar; ++i) {
-        int   op = bam_cigar_op(cigar[i]);//cigar operator character
-        int  len = bam_cigar_oplen(cigar[i]);//quante basi per lettera (es.50S)
+        int   op = bam_cigar_op(cigar[i]);
+        int  len = bam_cigar_oplen(cigar[i]);
 
-		if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {break;}//inizia l'allineamento con M,X,=
-		if (op == BAM_CSOFT_CLIP || op == BAM_CINS) {bases+=len;}//sommo quante basi S e I ci sono prima che la read si allinei al riferimento
+		if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {break;}
+		if (op == BAM_CSOFT_CLIP || op == BAM_CINS) {bases+=len;}
 	}
 	return bases;
 }
@@ -644,14 +481,18 @@ int Runner::Alignend(const bam1_t* b) {
 int Runner::inter_align_gap_on_query(const bam1_t* left_seg, const bam1_t* right_seg) {
     int left_end    = Alignend(left_seg);
     int right_start = Alignstarts(right_seg);
-    return right_start - left_end;   // >0 gap, <0 overlap
+    return right_start - left_end;   
 }
 
+/**
+ * The function `qname_stats` processes a group of BAM records with the same qname and
+ * classify read pairs in UU, UR, RU, WW, DD, MU, MR, MM, NM, NU, NR, NN categories.
+ */
 void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
     std::size_t begin = 0;
     std::size_t end = 0;
 
-    //vettori di indici non di reads
+    //index vectors
     std::vector<std::size_t> r1_mapped; r1_mapped.reserve(5);
     std::vector<std::size_t> r2_mapped; r2_mapped.reserve(5); 
 
@@ -717,7 +558,7 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
         b = Maptype::N;
 
         // -------------------------
-        // 1) Raccolta dati
+        // 1) Data collection
         // -------------------------
         //total_read = end - begin;
 
@@ -735,29 +576,29 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
             } else { 
 
                 if (flag & BAM_FREAD1) {
-                    r1_all.push_back(j); //che sia mappata o non mappata
+                    r1_all.push_back(j); //both mapped and unmapped
 
-                    if (!(flag & BAM_FUNMAP)) {//se è mappata
+                    if (!(flag & BAM_FUNMAP)) {//if is mapped
                         r1_mapped.push_back(j);
                         if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r1;
                         else {
-				primary_r1 =j;
-				if (flag & BAM_FDUP) is_dupl=true;
-				 mapR1=true;  
-			     }
+                            primary_r1 =j;
+                            if (flag & BAM_FDUP) is_dupl=true;
+                            mapR1=true;  
+                        }
                     }
 
                 } else if (flag & BAM_FREAD2){
-                    r2_all.push_back(j); //che sia mappata o non mappata
+                    r2_all.push_back(j); //both mapped and unmapped
 
-                    if (!(flag & BAM_FUNMAP)) {//se è mappata
+                    if (!(flag & BAM_FUNMAP)) {//if is mapped
                         r2_mapped.push_back(j);
                         if (flag & BAM_FSUPPLEMENTARY) ++supplementary_r2;
                         else {
-				primary_r2 =j;
-				if (flag & BAM_FDUP) is_dupl=true;
-  				 mapR2=true;
-			     }
+                            primary_r2 =j;
+                            if (flag & BAM_FDUP) is_dupl=true;
+                            mapR2=true;
+			            }
 
                     }
 
@@ -787,7 +628,7 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
         // 2) N/U/M
         // -------------------------
 
-        // ----- lato R1 -----
+        // -----  R1 side-----
         if (r1_mapped.size() == 0) {
             a = Maptype::N;
         }
@@ -805,11 +646,11 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
             a = Maptype::U;
         }
         else {
-            // qui non decido ancora: potrebbe essere walk oppure rescue
+            // could be both walk or rescued
             r1_unresolved = true;
         }
 
-        // ----- lato R2 -----
+        // -----  R2 side -----
         if (r2_mapped.size() == 0) {
             b = Maptype::N;
         }
@@ -831,30 +672,27 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
         }
 
         // -------------------------
-        // 3) WALK / RESCUE /CASI AMBIGUI
+        // 3) WALK / RESCUE / ABIGUOUS CASES
         // -------------------------
 
         if (r1_unresolved || r2_unresolved){
-++qnameStats.dbg_unresolved;
            std::size_t total_all = r1_all.size() + r2_all.size();
 		   const std::size_t NO_INDEX = static_cast<std::size_t>(-1);
 			inner = outer = other = NO_INDEX;
 
-            // se non è il classico 2+1, lo mando in WW
+            // if isn't 2+1: WW
             if (total_all != 3) {
-++qnameStats.dbg_not3;
                 ++qnameStats.WW;
                 begin = end;
                 continue;
             }
 
-            // pattern 2+1
+            // 2+1 pattern
             bool is_2plus1 =
                 (r1_all.size() == 2 && r2_all.size() == 1) ||
                 (r2_all.size() == 2 && r1_all.size() == 1);
 
             if (!is_2plus1) {
-++qnameStats.dbg_not_2plus1;
                 ++qnameStats.WW;
                 begin = end;
                 continue;
@@ -863,90 +701,80 @@ void Runner::qname_stats(Bam_record_vector &group, bam_hdr_t* bamHdr) {
 
 				//|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||			
 				// -------------------------
-				// identifica il lato chimerico
+				// identify chimeric side
 				// -------------------------
-				bool chim_on_r1 = (r1_all.size() == 2); //così so cos'è e che uno è il contrario dell'altro
+				bool chim_on_r1 = (r1_all.size() == 2); 
 				R1_chim = chim_on_r1;
 				R2_chim = !chim_on_r1;
 
-				// riferimenti comodi
-				auto& chim_all    = chim_on_r1 ? r1_all    : r2_all; //se lato chimerico R1 allora chim_all=R1_all se no R2_all
-				auto& chim_mapped = chim_on_r1 ? r1_mapped : r2_mapped; //se lato chimerico ampped R1 allora chim_mapped=R1_mapped se no R2_mapped
+				auto& chim_all    = chim_on_r1 ? r1_all    : r2_all; 
+				auto& chim_mapped = chim_on_r1 ? r1_mapped : r2_mapped; 
 
 				auto& other_all    = chim_on_r1 ? r2_all    : r1_all;
 				auto& other_mapped = chim_on_r1 ? r2_mapped : r1_mapped;
 
 				// -------------------------
-				// scegli OUTER e INNER sul lato chimerico
+				// choose OUTER e INNER on chimeric side
 				// -------------------------
-				// Caso A: due mapped -> ho davvero inner e outer
+				// Case A: two mapped -> inner e outer
 				if (chim_mapped.size() == 2) {
 					inner = chim_mapped[0];
 					outer = chim_mapped[1];
 
-					// ordino sulla query: inner è il più interno, outer il più esterno
+					//Sorting the query: 'inner' is the innermost, 'outer' is the outermost.
 					if (Alignstarts(group[inner]) > Alignstarts(group[outer])) {
 						std::swap(inner, outer);
 					}
 				}
-				// Caso B: un solo mapped -> quello è outer, inner è "assente/ignorabile"
+				// Case B: Only one mapped element – that is the outer one, while the inner one is absent/ignorable.
 				else if (chim_mapped.size() == 1) {
 					outer = chim_mapped[0];
 					inner = NO_INDEX;
 				}
-				// Caso C: nessun mapped sul lato chimerico -> non posso rescueare
+				// Case C: No mapped elements on the chimeric side -> cannot rescue
 				else {
-++qnameStats.dbg_unmapped;
 					++qnameStats.WW;
 					begin = end;
 					continue;
 				}
 
 				// -------------------------
-				// scegli OTHER sul lato opposto
+				// choose OTHER on the opposite side
 				// -------------------------
-				// se il lato opposto non ha mapped, other resta NO_INDEX
+				// Case B: If the opposite side has no mapped element, 'other' remains NO_INDEX.
 				if (!other_mapped.empty()) {
 					other = other_mapped[0];
 				}
-				//FINE INDENTIFICAZIONE LATO CHIMERICO
+				//END OF CHIMERIC SIDE IDENTIFICATION
 				//|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 
 				Maptype other_type = R1_chim ? b : a;
 
-				// 1) OUTER deve esistere ed essere buono
+				// 1) OUTER must exist and be valid. If not -> WW
 				bool outer_missing = (outer == NO_INDEX);
 				bool outer_bad = outer_missing || (group[outer]->core.qual < 1);
 
 				if (outer_bad) {
-if(outer_missing){++qnameStats.dbg_outer_noindex;}
-++qnameStats.dbg_outer_bad;
- if (other == NO_INDEX || other_type == Maptype::N) ++qnameStats.dbg_outer_bad_otherN;
-    else if (other_type == Maptype::M) ++qnameStats.dbg_outer_bad_otherM;
-    else if (other_type == Maptype::U) ++qnameStats.dbg_outer_bad_otherU;
 					++qnameStats.WW;
 					begin = end;
 					continue;
 				}
 
-				// 2) controllo se INNER è ignorabile
+				// 2) Check if INNER is ignorable
 				bool inner_missing = (inner == NO_INDEX);
 				bool inner_bad = inner_missing || (group[inner]->core.qual < 1);
 
-				// true se il gap/overlap rende inner non affidabile / ignorable
+				// Returns true if the gap/overlap makes INNER unreliable or ignorable.
 				bool inner_null_like = false;
 				if (!inner_missing) {
 					int qgap = inter_align_gap_on_query(group[inner], group[outer]);
-					inner_null_like = (qgap <  MAX_INTER_ALIGN_GAP); //così prende il gap piccolo (e ache l'oevrlap)!!!!!!!!!!!!!!!!!!!!!!
- if(inner_null_like){++qnameStats.dbg_gap_large;}
+					inner_null_like = (qgap <  MAX_INTER_ALIGN_GAP); 
 				}
 
 				bool ignore_inner = inner_bad || inner_null_like;
 
-				// 3) se OTHER è N o M -> rescue diretto
+				// 3) If OTHER is N or M -> direct rescue
 				if (other == NO_INDEX || other_type == Maptype::N) {
-++qnameStats.dbg_other_no_index;
-++qnameStats.dbg_other_type_N;
 					rescued = true;
 					if (R1_chim) {
 						a = Maptype::R;
@@ -957,7 +785,6 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 					}
 				}
 				else if (other_type == Maptype::M) {
-++qnameStats.dbg_other_type_M;
 					rescued = true;
 					if (R1_chim) {
 						a = Maptype::R;
@@ -968,15 +795,14 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 					}
 				}
 
-				// 4) se OTHER è U e INNER è ignorabile -> rescue diretto
+				// 4) If OTHER is U and INNER is ignorable -> direct rescue
 				else if (other_type == Maptype::U && ignore_inner) {
-++qnameStats.dbg_ignore_inner;
 					rescued = true;
 					if (R1_chim) a = Maptype::R;
 					else         b = Maptype::R;
 				}
 
-				// 5) se OTHER è U e INNER è buono -> criteri geometrici
+				// 5) If OTHER is U and INNER is good -> geometric criteria
 				else if (other_type == Maptype::U) {
 
 					bool rev_i  = group[inner]->core.flag & BAM_FREVERSE;
@@ -993,18 +819,15 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
 						(llabs(group[inner]->core.pos - group[other]->core.pos) <= 2000);
 
 					if (cis && facing && distance) {
-++qnameStats.dbg_geom_pass;
 						rescued = true;
 						if (R1_chim) a = Maptype::R;
 						else         b = Maptype::R;
 					} else {
 						++qnameStats.WW;
-++qnameStats.dbg_geom_fail;
 						begin = end;
 						continue;
 					}
-				} else {// 6) fallback: qualunque caso non coperto -> WW
-++qnameStats.fallback;
+				} else {// 6) Fallback: any uncovered case -> WW
 					++qnameStats.WW;
 					begin = end;
 					continue;
@@ -1019,21 +842,21 @@ if(outer_missing){++qnameStats.dbg_outer_noindex;}
             plot_r2 = primary_r2;
         }
         else if (a == Maptype::R && b == Maptype::U) {
-            plot_r1 = outer;   // lato R1 rescued
-            plot_r2 = other;   // lato R2 unique
+            plot_r1 = outer;   // R1 side rescued
+            plot_r2 = other;   // R2 side unique
         }
         else if (a == Maptype::U && b == Maptype::R) {
-            plot_r1 = other;   // lato R1 unique
-            plot_r2 = outer;   // lato R2 rescued
+            plot_r1 = other;   // R1 side unique
+            plot_r2 = outer;   // R2 side rescued
         }
 
         if (plot_r1 != NO_INDEX && plot_r2 != NO_INDEX) {
             update_pair_plots_from_records(group[plot_r1], group[plot_r2]);
             update_strand_orientation_by_distance(group[plot_r1], group[plot_r2]);
-            //collect_binned_tlen_by_contig_class(group[plot_r1], group[plot_r2], bamHdr);
+    
         }
         // -------------------------
-        // 6) classificazione finale
+        // 6) Final classification
         // -------------------------
         bool classified = false;
 
@@ -1073,15 +896,19 @@ double Runner::percentage(std::size_t value, double total) {
     return 100.0 * static_cast<double>(value) / total;
 }
 
+/*
+ * The function `update_mean_tlen` calculates the updated mean value based on the previous mean, a new
+ * value, and the total count.
+ */
 long double Runner::update_mean_tlen(long double prev_mean,std::uint64_t k, bam1_t* bamdata){  //<x>
-    long double xk = std::abs((long double)bamdata->core.isize);  // TEN dLel record
+    long double xk = std::abs((long double)bamdata->core.isize);  // record TLEN
     return (xk / k) + ((k - 1) / (long double)k) * prev_mean;									
 }
 
-long double Runner::update_quadratic_mean_tlen(long double prev_qmean,std::uint64_t k, bam1_t* bamdata){ //<x^2> FORSE SBAGLIATA
-	long double xk = std::abs((long double)bamdata->core.isize);  // TLEN del record
+
+long double Runner::update_quadratic_mean_tlen(long double prev_qmean,std::uint64_t k, bam1_t* bamdata){ //<x^2> 
+	long double xk = std::abs((long double)bamdata->core.isize);  // record TLEN
 	long double xk2 = xk * xk;
- //   return (pow(xk,2) / k) + ((k - 1) / (long double)k) * pow(prev_mean,2);
 	return prev_qmean + (xk2 - prev_qmean) / (long double)k;
 }
 
@@ -1091,7 +918,7 @@ double Runner::error_rate(uint64_t mismatched_bases,uint64_t total_base){
 
 void Runner::histo_global_distance (std::unordered_map<uint64_t,uint64_t>& global_dist_count){
 	std::fstream myfile;
-	myfile.open("Pair_by_global_distance.txt",std::ios::out); //agginugere il path (i vecchi dati vengono cancellati e sovrascritti) 
+	myfile.open("Pair_by_global_distance.txt",std::ios::out);  
 
 	if(!myfile.is_open()){
 		std::cout<<"pair_by_global_distance not open"<<std::endl;
@@ -1107,7 +934,7 @@ void Runner::histo_global_distance (std::unordered_map<uint64_t,uint64_t>& globa
 
 void Runner::histo_chrom_distance (std::map<uint32_t,std::unordered_map<uint64_t,uint64_t>>& chrom_dist_count) { 
 	std::fstream myfile;
-	myfile.open("Pair_chromosome_by_distance.txt",std::ios::out); //aggiungere il path (i vecchi dati vengono cancellati e sovrascritti)
+	myfile.open("Pair_chromosome_by_distance.txt",std::ios::out); 
 
 	if(!myfile.is_open()){
 		std::cout<<"pair_chromosome_by_distance not open"<<std::endl;
@@ -1133,36 +960,28 @@ void Runner::histo_chrom_distance (std::map<uint32_t,std::unordered_map<uint64_t
 void Runner::flag_inspector (bam1_t* bamdata) {
 	uint16_t flag= bamdata-> core.flag;
 
-	//sui singoli record
     if(flag & BAM_FDUP) {++pairStats.duplicated;}
 	if (flag & BAM_FQCFAIL){++readStats.qc_fail;} //return?
-	if (flag & BAM_FUNMAP) {++readStats.unmapped;} //così i mapped sono di tutti come in samtools ma ho la richiesta una volta sola e non dentro e fuori dall'else
+	if (flag & BAM_FUNMAP) {++readStats.unmapped;} 
 	if (flag & BAM_FPROPER_PAIR) {++pairStats.proper_pairs;}
 
 	if(flag & BAM_FSUPPLEMENTARY) {
 		++readStats.supplementary;
-		return;  // o si tolgono i return e mettere le cose di coppia nell'else come fa samtools flagstats
+		return;  
 	} else if (flag & BAM_FSECONDARY) {
 		++readStats.secondary;
 		return;
 	} else {readStats.primary++;}
-
-	//sulle coppie, faccio tutte e due insieme così ho già filtrato dall calcolo le coppie supplementary e secondary
 	
 	if(flag & BAM_FPAIRED || flag & BAM_FPROPER_PAIR) {
 		
         if(!(flag & BAM_FUNMAP)) ++readStats.primary_mapped;
 
-		 //WARNING! se c'è solo una read1 ma segnata come duplicato così non la conto nelle rad (basta toglier l'else if)
-		if (flag & BAM_FREAD1) { // così ne prendo solo una e non due non so se ha senso
+		if (flag & BAM_FREAD1) {
 			++pairStats.read1;
             ++pairStats.pairN;
-
-			//if ((flag & BAM_FUNMAP && !(flag & BAM_FMUNMAP))^(flag & BAM_FMUNMAP && !(flag & BAM_FUNMAP))) {++pairStats.UMone_sided;} // statistica fatta sul singolo se no è doppia
-			//else if (flag & BAM_FUNMAP && (flag & BAM_FMUNMAP)) {++pairStats.UNmapped;}
 	
 			if(!(flag & BAM_FUNMAP) && !(flag & BAM_FMUNMAP)) {
-				//++pairStats.UMtwo_sided;
 				pairStats.good_read1=true;
 				++pairStats.good_pairs;
 			}
@@ -1195,11 +1014,10 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 				if (pairStats.good_read1 && vectorbox[i]->core.tid == vectorbox[i]->core.mtid) {
 
                     ++readStats.cis;
-					if(std::abs((long double)vectorbox[i]->core.isize)>0 && ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE))){//così hanno sempre orientamenti opposti ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE)) &&
+					if(std::abs((long double)vectorbox[i]->core.isize)>0 && ((vectorbox[i]->core.flag & BAM_FREVERSE) != (vectorbox[i]->core.flag & BAM_FMREVERSE))){//This ensures they always have opposite orientations. 
 
 						++readStats.av_counter;			
 						readStats.mean_insert = update_mean_tlen(readStats.mean_insert, readStats.av_counter, vectorbox[i]);   
-						//	readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.mean_insert,av_counter, bamdata);
 						readStats.quadratic_mean=update_quadratic_mean_tlen(readStats.quadratic_mean,readStats.av_counter, vectorbox[i]);
 
 
@@ -1214,7 +1032,7 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 
 					}
 
-					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); // dovrebbero essere degli uint64_t quindi non serve forzare il double ne arrotondare
+					dist=llabs(vectorbox[i]->core.pos - vectorbox[i]->core.mpos); 
 					
 					if(userInput.hist_global){ //HISTO_GLOBAL_DATA
 						++global_dist_count[dist]; 
@@ -1222,18 +1040,17 @@ void Runner::processReads(Bam_record_vector &vectorbox, bam_hdr_t* bamHdr) {
 					
 					if(userInput.hist_by_chrom){	 //HISTO_CHROM_DATA
 						chrom=vectorbox[i]->core.tid;
-						++chrom_dist_count[chrom][dist];
+						++chrom_dist_count[chrom][dist]; 
 					}
 						
 
 					if (pairStats.good_read1 || pairStats.good_read2) { 
-			      	// if (!(vectorbox[i]->core.flag & BAM_FUNMAP) &&  !(vectorbox[i]->core.flag & BAM_FSECONDARY) && !(vectorbox[i]->core.flag & BAM_FSUPPLEMENTARY)){
-                        uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM");//diff tra a read e il riferimento
+                        uint8_t* nm_ptr = bam_aux_get(vectorbox[i], "NM"); //Difference between the read and the reference
 						uint64_t nm = nm_ptr ? bam_aux2i(nm_ptr) : 0;
 
 						readStats.mismatched_bases += nm;  
 						uint64_t aligned = bam_cigar2rlen(vectorbox[i]->core.n_cigar, bam_get_cigar(vectorbox[i])); //bam_cigar2rlen(int n_cigar, const uint32_t *cigar):This function returns the sum of the lengths of the M, I, S, = and X operations in @p cigar (these are the operations that "consume" query bases
-						readStats.total_mapped_base += aligned;
+						readStats.total_read_bases += aligned;
 					} 
 				}else if (pairStats.good_read1 && vectorbox[i]->core.tid != vectorbox[i]->core.mtid) {++readStats.trans;}
 			}
@@ -1256,7 +1073,7 @@ void Runner::output(){
 		std::cout<<"Reads_mapped: "<<readStats.readN-readStats.unmapped<<std::endl;
         std::cout<<"Primary_mapped: "<<readStats.primary_mapped<<std::endl;
 		std::cout<<"Unmapped: "<<readStats.unmapped<<std::endl;        
-		std::cout<<"Proper_pairs: "<<pairStats.proper_pairs<<std::endl;;
+		std::cout<<"Proper_pairs: "<<pairStats.proper_pairs<<std::endl;
 		std::cout<<"Record_duplicated: "<<pairStats.duplicated<<std::endl;
 		std::cout<<"MapQ0: "<<readStats.mapQ0<<std::endl;
 		std::cout<<"Qc_fail: "<<readStats.qc_fail<<std::endl; 
@@ -1265,26 +1082,18 @@ void Runner::output(){
         std::cout<<"Trans: "<<readStats.trans<<std::endl;
 		std ::cout<<"insert_size_average: "<<readStats.mean_insert<<std::endl;
 		std::cout<<"SD: "<<std::sqrt(readStats.quadratic_mean -(readStats.mean_insert * readStats.mean_insert))<<std::endl;
-        std::cout<<"insert_size_peak: "<<readStats.mean_insert_bulk99<<std::endl;
-        std::cout<<"SD_bulk99: "<<std::sqrt(readStats.quadratic_mean_bulk99 - (readStats.mean_insert_bulk99 * readStats.mean_insert_bulk99))<<std::endl;
-		std::cout<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_mapped_base)<<std::endl;
+        std::cout<<"insert_size_peak: "<<readStats.mean_insert_peak<<std::endl;
+        std::cout<<"SD_peak: "<<std::sqrt(readStats.quadratic_mean_peak - (readStats.mean_insert_peak * readStats.mean_insert_peak))<<std::endl;
+		std::cout<<"error_rate: "<<error_rate(readStats.mismatched_bases,readStats.total_read_bases)<<std::endl;
 		std::cout<<"|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"<<std::endl;
+        std::cout<<std::endl;
 		std::cout<<"PAIR READS STATISTICS:"<<std::endl;
 		std::cout<<"Pairs_two_sided_mapped: "<<pairStats.two_side_mapped<<std::endl;
-		std::cout<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
         std::cout<<"Pairs_one_sided_mapped: "<<pairStats.one_side<<std::endl;
-		std::cout<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
         std::cout<<"Pairs_unmapped: "<<pairStats.UNmapped<<std::endl;
-		std::cout<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
         std::cout<<"CIS: "<<pairStats.cis<<std::endl;
 		std::cout<<"Primary_dupl "<<pairStats.dupl<<std::endl;
 		std::cout<<"unique_primary: "<<pairStats.two_side_mapped-pairStats.dupl<<std::endl;//mapped primary after deduplication
-		std::cout<<std::endl;
-		std::cout<<"%Two_sided_mapped: "<< ((pairStats.two_side_mapped*100)/(long double)pairStats.pairN)<<std::endl;
-		std::cout<<"%One_sided: "<< ((pairStats.one_side*100)/(long double)pairStats.pairN)<<std::endl;
-		std::cout<<"%Unmapped: "<<((pairStats.UNmapped*100)/(long double)pairStats.pairN)<<std::endl;
-		std::cout<<"%CIS: "<<((pairStats.cis*100)/(long double)pairStats.two_side_mapped)<<std::endl;
-		std::cout<<"%primary_dupl: "<<((pairStats.dupl*100)/(long double)pairStats.two_side_mapped)<<std::endl;
 		std::cout<<std::endl;
 		std::cout<<"UU"<<":"<<"MM"<<":"<<"NN"<<":"<<"UM"<<":"<<"UN"<<":"<<"NM"<<"\t"<<qnameStats.UU<<":"<<qnameStats.MM<<":"<<qnameStats.NN<<":"<<qnameStats.MU<<":"<<qnameStats.NU<<":"<<qnameStats.NM<<std::endl;
 		std::cout<<"DD"<<":"<<"WW"<<":"<<"UR"<<":"<<"RU"<<":"<<"RN"<<":"<<"RM"<<"\t"<<qnameStats.DD<<":"<<qnameStats.WW<<":"<<qnameStats.UR<<":"<<qnameStats.RU<<":"<<qnameStats.NR<<":"<<qnameStats.MR<<std::endl;
@@ -1307,27 +1116,12 @@ void Runner::output(){
 		std::cout<<"two_sided_mapped"<< qnameStats.UU+qnameStats.UR+qnameStats.RU<<std::endl;
 		std::cout<<"total read"<<tot_qname_stats<<std::endl;
 
-        std::cout<<"Classificated as WW:"<<std::endl;
-		std::cout << "unresolved: " << qnameStats.dbg_unresolved << "\n";
-		std::cout << "not_2plus1->WW: " << qnameStats.dbg_not_2plus1 << "\n";
-		std::cout << "not 3"<<  qnameStats.dbg_not3 << std::endl;
-		std::cout << "no mapped chim side"<<  qnameStats.dbg_unmapped << std::endl;
-		std::cout << "outer_bad->WW: " << qnameStats.dbg_outer_bad << "\n";
-		std::cout << "outer noindex (not possible)"<<  qnameStats.dbg_outer_noindex << std::endl;
-		std::cout << "outer bad other M"<<  qnameStats.dbg_outer_bad_otherM << std::endl;
-		std::cout << "outer bad other U"<<  qnameStats.dbg_outer_bad_otherU << std::endl;
-		std::cout << "outer bad other N"<<  qnameStats.dbg_outer_bad_otherN << std::endl;
-		std::cout << "other==NO_INDEX: " << qnameStats.dbg_other_no_index << "\n";
-		std::cout << "other_type==N: " << qnameStats.dbg_other_type_N << "\n";
-		std::cout << "other_type==M: " << qnameStats.dbg_other_type_M << "\n";
-		std::cout << "ignore_inner->R: " << qnameStats.dbg_ignore_inner << "\n";
-		std::cout << "ignore inner per gap<20"<<  qnameStats.dbg_gap_large << std::endl;
-		std::cout << "geom pass->R: " << qnameStats.dbg_geom_pass << "\n";
-		std::cout << "geom fail->WW: " << qnameStats.dbg_geom_fail << "\n";
-		std::cout << "fall back: " << qnameStats.fallback << "\n";
-
 	}
 
+/*
+ * The function `data_vector` populates a vector with a specified number of records read from a BAM
+ * file.
+ */
 void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *bamHdr){
 	vectorbox.clear();
 	for (int i=0; i<vectorbox.get_size_wanted();++i){ 
@@ -1335,6 +1129,10 @@ void Runner::data_vector(Bam_record_vector &vectorbox,samFile *fp_in,bam_hdr_t *
 	}
 }
 
+/*
+ * The function fills the vector up to the desired size and continues populating it until it encounters 
+ * a record with a different qname. This last record is then copied into the bridge and used as the first record for the next vector to be filled.
+ */
 void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool &first, samFile *fp_in, bam_hdr_t *bamHdr){
 	const char* qname;
 	const char* current_qname;
@@ -1343,7 +1141,7 @@ void Runner::data_vector(Bam_record_vector &vectorbox, bam1_t *bridge_read,bool 
 
 	for (int i=0;i<vectorbox.get_size_wanted();++i){
 		if(bridge){
-			if(first){//:( come faccio
+			if(first){
 				vectorbox.add_record(fp_in,bamHdr);
 				first =false;
 			}else{
@@ -1375,9 +1173,9 @@ void Runner::run() {
 	
 	for (uint32_t i = 0; i < numFiles; ++i) {
 
-		global_dist_count.clear();//svuotare le mappe prima di ogni file o si mescoleranno (se non è l'obiettivo)s
+		global_dist_count.clear();
 		chrom_dist_count.clear();
-		graph.Ps_binned_dist_count.clear();//!!!!!!!!!!!non volgio sia comulativo tra file diversi COME FACCIO SE OGNI FILE OUTPUT MI SOVRASCRIVE QUELLO PERIMA PER PIÙ FILE
+		graph.Ps_binned_dist_count.clear();
 		graph.ff_binned_dist_count.clear();
 		graph.fr_binned_dist_count.clear();
 		graph.rf_binned_dist_count.clear();
@@ -1396,7 +1194,7 @@ void Runner::run() {
 		if (tpool_read.pool) {	hts_set_opt(fp_in, HTS_OPT_THREAD_POOL, &tpool_read);
 		} else { lg.verbose("Failed to generate decompression threadpool with " + std::to_string(userInput.decompression_threads) + " threads. Continuing single-threaded");}
 
-		bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // perchè la funzione string.find() ritorna npos;
+		bool qname_sorted =(std::string(bamHdr->text, bamHdr->l_text).find("SO:queryname") != std::string::npos); // because the string.find() function return npos
 		if (!userInput.single_read_stats && !userInput.pair_read_stats) {//default
 			userInput.single_read_stats = true;
     		if (qname_sorted) {
@@ -1408,11 +1206,11 @@ void Runner::run() {
 			std::cout<<"Error: to compute pair read statistics the input BAM file must be qname sorted."<<std::endl;
 			exit(1);
 		}
-		std::size_t j=200;//set real capacity
+		std::size_t j=200;//set real capacity of vectorbox
 		bool first=true;
  
 		Bam_record_vector records_vector(j); 
-		bam1_t *bridge_read=bam_init1(); //È UN PUNTATORE
+		bam1_t *bridge_read=bam_init1(); 
 
 		while(!(records_vector.is_file_end())){ 
 			if(userInput.pair_read_stats){
@@ -1471,7 +1269,7 @@ Bam_record_vector::Bam_record_vector(Bam_record_vector&& other) noexcept //move 
 	other.size_wanted = 0;
     other.file_end = false;
 }
-Bam_record_vector& Bam_record_vector::operator=(Bam_record_vector&& other) noexcept{ //omve assignment operator
+Bam_record_vector& Bam_record_vector::operator=(Bam_record_vector&& other) noexcept{ //move assignment operator
     if (this == &other) return *this;
     	for (auto* b : slots) bam_destroy1(b);
 
@@ -1509,9 +1307,9 @@ bool Bam_record_vector::add_record(samFile *fp_in,bam_hdr_t *bamHdr){
 	}
 }
 
-bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // da sorgente al primo slot libero del vectorbox.
+bam1_t* Bam_record_vector::push_back(const bam1_t* src) { // From source to the first available slot in the vectorbox.
     if (used== slots.size())
-        expand(slots.empty() ? 10 : slots.size() * 2);//se p empty per qualche motivo a cosa lo metto aiuto ahahha
+        expand(slots.empty() ? 10 : slots.size() * 2);
 
     bam1_t* dst = slots[used];
 
