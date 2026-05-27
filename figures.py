@@ -185,69 +185,87 @@ plt.title("Pair types report")
 plt.savefig("pair_types_stacked_with_pct.pdf", bbox_inches="tight")
 plt.show()
 
+# ==============================================================================
+# STRAND ORIENTATION STATS (SEPARATOR SUBPLOTS - NORMALIZED TO 100%)
+# ==============================================================================
 
+import matplotlib.pyplot as plt
+import numpy as np
 
-#GRAFO NODI E ARCHI
-nodes = get_section(sections, "GRAPH_NODES")
-nodes = require_columns(nodes, ["id", "name", "length", "intra_count"], "GRAPH_NODES")
+# Invertito l'ordine: RF viene prima di FR
+orient_categories = ["FF", "RF", "FR", "RR"]
 
-edges = get_section(sections, "GRAPH_EDGES")
-edges = require_columns(edges, ["source", "target", "inter_count"], "GRAPH_EDGES")
+# Estraiamo la sezione dal file
+orient_df = get_section(sections, "STRAND_ORIENTATION_BY_DISTANCE")
+# Filtriamo per escludere la riga 'combined'
+orient_df = orient_df[orient_df["distance_bin"] != "combined"].reset_index(drop=True)
 
-# filtro opzionale: tieni solo nodi con intra_count > 0 oppure lunghi abbastanza
-nodes = nodes[nodes["intra_count"] > 0].copy()
+# Palette di colori richiesta
+orient_colors = {
+    "FF": "#e31a1c",  # Rosso
+    "RF": "#1f78b4",  # Blu
+    "FR": "#33a02c",  # Verde
+    "RR": "#6a3d9a",  # Viola
+}
 
-valid_ids = set(nodes["id"])
-edges = edges[edges["source"].isin(valid_ids) & edges["target"].isin(valid_ids)].copy()
+num_bins = len(orient_df)
 
-# filtro opzionale sugli archi
-edges = edges[edges["inter_count"] >= 5].copy()
+# Creiamo una figura con N subplots verticali (uno sotto l'altro)
+# Condividiamo l'asse X così la scala 0-100% è identica per tutti
+fig, axes = plt.subplots(nrows=num_bins, ncols=1, figsize=(12, 1.2 * num_bins), sharex=True)
 
-G = nx.Graph()
+# Se c'è solo un bin, axes non è un array, lo forziamo ad esserlo
+if num_bins == 1:
+    axes = [axes]
 
-for _, row in nodes.iterrows():
-    G.add_node(
-        int(row["id"]),
-        name=row["name"],
-        length=int(row["length"]),
-        intra_count=int(row["intra_count"])
-    )
+for i, ax in enumerate(axes):
+    row = orient_df.iloc[i]
+    dist_label = row["distance_bin"]
+    run_label = row["run"]
+    
+    # Recuperiamo i valori percentuali direttamente dalle colonne pFF, pRF... del tuo file
+    p_vals = {cat: float(row[f"p{cat}"]) for cat in orient_categories}
+    
+    left = 0.0
+    for cat in orient_categories:
+        val = p_vals[cat]
+        ax.barh(
+            [0],  # Singola barra orizzontale in posizione 0
+            val,
+            left=left,
+            color=orient_colors[cat],
+            label=cat if i == 0 else "",  # Mettiamo la legenda solo sul primo grafico
+            height=0.45
+        )
+        left += val
+        
+    # Configurazione di ogni singolo subplot
+    ax.set_yticks([0])
+    ax.set_yticklabels([f"{run_label}\n({dist_label})"], fontsize=9)
+    ax.set_xlim(0, 100)  # Forza la scala da 0 a 100%
+    
+    # Rimuoviamo i bordi inutili per farlo pulito
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.tick_params(axis="y", length=0)
 
-for _, row in edges.iterrows():
-    G.add_edge(
-        int(row["source"]),
-        int(row["target"]),
-        weight=int(row["inter_count"])
-    )
+# Configuriamo l'ultimo asse in basso per mostrare la percentuale
+axes[-1].set_xlabel("Percentage (%)", fontsize=10, labelpad=10)
+axes[-1].spines['bottom'].set_visible(True)
 
-# dimensione nodi: log dei contatti intra
-node_sizes = []
-for n in G.nodes():
-    intra = G.nodes[n]["intra_count"]
-    node_sizes.append(50 + 80 * np.log1p(intra))
+# Posizioniamo la legenda globale in alto a destra, orizzontale e pulita (segue l'ordine di orient_categories)
+axes[0].legend(
+    bbox_to_anchor=(1.0, 1.8), 
+    loc="upper right", 
+    ncol=4, 
+    frameon=False,
+    fontsize=10
+)
 
-# spessore archi: log dei contatti inter
-edge_widths = []
-for u, v in G.edges():
-    w = G[u][v]["weight"]
-    edge_widths.append(0.5 + 1.5 * np.log1p(w))
+plt.suptitle("Strand Orientation Composition by Distance Bin", fontsize=12, y=0.98, weight='bold')
 
-pos = nx.spring_layout(G, seed=42, k=0.8)
-
-plt.figure(figsize=(12, 12))
-nx.draw_networkx_edges(G, pos, width=edge_widths, alpha=0.4)
-nx.draw_networkx_nodes(G, pos, node_size=node_sizes, alpha=0.8)
-
-# etichette solo per i nodi più grandi
-labels = {}
-for n in G.nodes():
-    if G.nodes[n]["intra_count"] >= 50:
-        labels[n] = G.nodes[n]["name"]
-
-nx.draw_networkx_labels(G, pos, labels=labels, font_size=8)
-
-plt.title("Reference contact graph")
-plt.axis("off")
+# Aggiusta la disposizione per evitare sovrapposizioni
 plt.tight_layout()
-plt.savefig("reference_contact_graph.pdf", bbox_inches="tight")
+plt.savefig("strand_orientation_subplots_normalized.pdf", bbox_inches="tight")
 plt.show()
