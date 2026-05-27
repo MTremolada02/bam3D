@@ -14,7 +14,7 @@
 #include "threadpool.h"
 
 
-#include <newrunner.hpp>
+#include <runner.hpp>
 #include <main.hpp>
 
 std::string version = "0.0.1";
@@ -63,8 +63,7 @@ std::string getArgs(char* optarg, unsigned int argc, char **argv) {
     
 }
 
-int main(int argc, char **argv) {
-//std::cout<<"DAI"<<std::endl;    
+int main(int argc, char **argv) {   
     short int c; // optarg
     short unsigned int pos_op = 1; // optional arguments
     
@@ -92,11 +91,6 @@ int main(int argc, char **argv) {
         
         {0, 0, 0, 0}
     };
-    
-//    const static std::unordered_map<std::string,int> tools{
-//        {"tool1",1},
-//        {"tool2",2}
-//    };
     
     const static std::unordered_map<std::string,int> modes{
         {"parseBam",1},
@@ -206,8 +200,6 @@ int main(int argc, char **argv) {
         
     }
     
-//    std::cout<<"Invoking: "<<cmd<<std::endl;
-//    std::system(cmd.c_str());
 
     Runner runner;
     threadPool.init(maxThreads); // initialize threadpool
