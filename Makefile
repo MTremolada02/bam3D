@@ -15,7 +15,11 @@ BINDIR := $(BUILD)/.o
 LIBS = -lz -lhts
 LDFLAGS = -pthread
 
+<<<<<<< Updated upstream
 OBJS := main runner #OBJS := main runner
+=======
+OBJS := main def  #OBJS := main runner
+>>>>>>> Stashed changes
 BINS := $(addprefix $(BINDIR)/, $(OBJS))
 
 head: $(BINS) bam3D | $(BUILD)#module2 
