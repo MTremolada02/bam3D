@@ -39,16 +39,16 @@ int main(int, char **argv) {
     //const std::map<std::set<std::string>, std::vector<std::string>> ext_args = {
        // {{"fasta", "fasta.gz", "fastq", "fastq.gz", "bam", "cram"}, {"-m", "-g" , "-f \"l>10\"", "-f \"l<10\"", "-f \"l=10\"", "--sequence-report", "--output-file /tmp/test.bam"}},
     const std::map<std::set<std::string>, std::vector<std::string>> ext_args = {
-        {{"bam"}, {"", "-g" , "-m"}},
+        {{"bam"}, {""}},
     
         //  {{set of test file extensions}, {list of command line args to run with}}
     };
 
-    const std::map<std::set<std::string>, std::vector<std::string>> file_args = {
-        { {"test.400reads.qname.bam"}, {} },
+    //const std::map<std::set<std::string>, std::vector<std::string>> file_args = {
+    //    { {"test.400reads.qname.bam"}, {} },
 
     //  {{set of test file paths}, {list of command line args to run with}}
-    };
+    //};
 
     const std::set<std::string> exclude {"agp", "sak"};
 
