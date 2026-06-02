@@ -62,7 +62,7 @@ int main(int, char **argv) {
             }
         }
     }
-
+/*
     std::fstream fstream;
     for(const auto &pair : file_args) {
         for(const std::string &file : pair.first) {
@@ -74,6 +74,6 @@ int main(int, char **argv) {
             }
         }
     }
-
+*/
     std::exit(EXIT_SUCCESS);
 }

@@ -12,14 +12,11 @@ BUILD = build/bin
 SOURCE = src
 INCLUDE = include
 BINDIR := $(BUILD)/.o
-LIBS = -lz -lhts
+LIBS = -lz -lhts -L$(CONDA_PREFIX)/lib -Wl,-rpath,$(CONDA_PREFIX)/lib
+#LIBS = -lz -lhts
 LDFLAGS = -pthread
 
-<<<<<<< Updated upstream
 OBJS := main runner #OBJS := main runner
-=======
-OBJS := main def  #OBJS := main runner
->>>>>>> Stashed changes
 BINS := $(addprefix $(BINDIR)/, $(OBJS))
 
 head: $(BINS) bam3D | $(BUILD)#module2 
